@@ -76,9 +76,9 @@ final class QuickAccessParity059Tests: XCTestCase {
     XCTAssertGreaterThan(QuickAccessLayout.hoverBlurRadius, 0)
   }
 
-  func testСистемныеЗначкиКарточекЗагружаются() {
+  func testЗначкиКарточекЗагружаютсяИзКаталога() {
     for name in ["popupClose", "popupTrash", "popupPin", "popupAnnotate", "popupTrim", "popupUpload"] {
-      XCTAssertNotNil(OwnShotSymbols.nsImage(name), name)
+      XCTAssertNotNil(OwnShotIcons.nsImage(name), name)
     }
   }
 

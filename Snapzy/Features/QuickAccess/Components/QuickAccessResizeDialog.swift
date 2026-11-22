@@ -101,7 +101,7 @@ final class QuickAccessResizeDialog: NSObject, NSTextFieldDelegate {
     widthField.stringValue = Self.format(dimensions.width)
     heightField.stringValue = Self.format(dimensions.height)
     linkButton.state = dimensions.isLinked ? .on : .off
-    linkButton.image = OwnShotSymbols.nsImage(dimensions.isLinked ? "resizeLock" : "resizeLockOpen")
+    linkButton.image = OwnShotIcons.nsImage(dimensions.isLinked ? "resizeLock" : "resizeLockOpen")
     linkButton.setAccessibilityLabel(L10n.QuickAccessMenu.resizeKeepProportions)
     unitPopup.selectItem(at: dimensions.unit == .pixels ? 0 : 1)
   }

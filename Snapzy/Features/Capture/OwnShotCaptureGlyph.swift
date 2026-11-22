@@ -17,7 +17,7 @@ struct OwnShotCaptureGlyph: View {
   }
 
   var body: some View {
-    OwnShotSymbols.image(resourceName)
+    OwnShotIcons.image(resourceName)
       .renderingMode(.template)
       // Цвет значка показывает, включён ли источник.
       .foregroundStyle(Color(nsColor: enabled ? OwnShotHUDStyle.primaryForeground : OwnShotHUDStyle.inactiveForeground))

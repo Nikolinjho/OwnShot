@@ -188,7 +188,7 @@ struct RecordingStatusBarView: View {
     Button(action: action) {
       Group {
         if let resourceName {
-          OwnShotSymbols.image(resourceName).renderingMode(.template)
+          OwnShotIcons.image(resourceName).renderingMode(.template)
         } else {
           Image(systemName: systemName).font(.system(size: 18, weight: .regular))
         }

@@ -2,7 +2,7 @@
 //  OwnShotOnboardingView.swift
 //  Snapzy
 //
-//  Экраны онбординга OwnShot используют системные иллюстрации и иконку приложения.
+//  Экраны онбординга OwnShot используют иллюстрации из каталога и иконку приложения.
 //
 
 import AppKit
@@ -77,7 +77,7 @@ struct OwnShotOnboardingView: View {
       )
     case .finish:
       VStack(spacing: 16) {
-        symbol("menubar.rectangle")
+        asset("onboardingMenubar")
         title(L10n.OwnShotOnboarding.finishTitle)
         message(L10n.OwnShotOnboarding.finishMessage)
       }
@@ -99,9 +99,7 @@ struct OwnShotOnboardingView: View {
     HStack(alignment: .center, spacing: 12) {
       Group {
         if let resource {
-          OwnShotSymbols.image(resource)
-            .font(.system(size: 20))
-            .foregroundStyle(.secondary)
+          OwnShotIcons.image(resource)
         } else if let icon {
           Image(systemName: icon)
             .font(.system(size: 18))
@@ -187,9 +185,8 @@ struct OwnShotOnboardingView: View {
       .frame(height: 96)
   }
 
-  /// Системная иллюстрация для шага онбординга.
   private func asset(_ name: String) -> some View {
-    symbol(OwnShotSymbols.names[name] ?? "questionmark.circle")
+    OwnShotIcons.image(name)
   }
 
   private var appIcon: some View {

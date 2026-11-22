@@ -66,7 +66,7 @@ struct AnnotateInlineToolControls: View {
       if state.quickPropertiesSupportsCanvasLock {
         Button { isCanvasLocked.toggle() } label: {
           // annotateLocked 9×13 и annotateUnlocked 13×13 pt эталона в кнопке шириной 38 pt.
-          OwnShotSymbols.image(isCanvasLocked ? "annotateLocked" : "annotateUnlocked")
+          OwnShotIcons.image(isCanvasLocked ? "annotateLocked" : "annotateUnlocked")
             .renderingMode(.template)
             .frame(width: 38, height: 28)
             .modifier(OwnShotEditorCapsule())
@@ -79,7 +79,7 @@ struct AnnotateInlineToolControls: View {
   }
 
   private var chevron: some View {
-    OwnShotSymbols.image("annotateChevron").renderingMode(.template).foregroundStyle(.secondary)
+    OwnShotIcons.image("annotateChevron").renderingMode(.template).foregroundStyle(.secondary)
   }
 
   private var fontSizeButton: some View {
@@ -103,7 +103,7 @@ struct AnnotateInlineToolControls: View {
     let current = state.quickTextStyle
     return Button { showsTextStyle.toggle() } label: {
       HStack(spacing: 5) {
-        OwnShotSymbols.image("annotateTextStyle").renderingMode(.template).frame(width: 14, height: 14)
+        OwnShotIcons.image("annotateTextStyle").renderingMode(.template).frame(width: 14, height: 14)
         chevron
       }.padding(.horizontal, 6).frame(width: 42, height: 28)
         .modifier(OwnShotEditorCapsule())

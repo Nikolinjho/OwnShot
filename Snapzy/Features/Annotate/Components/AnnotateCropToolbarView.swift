@@ -48,7 +48,7 @@ struct CropToolbarView: View {
       .frame(width: compact ? 96 : 112)
       ratioField("Ratio width", text: $ratioWidthText, field: .width)
       Button { state.swapCropDimensions() } label: {
-        OwnShotSymbols.image("annotateSwapButton").renderingMode(.template).frame(width: 14, height: 14)
+        OwnShotIcons.image("annotateSwapButton").renderingMode(.template).frame(width: 14, height: 14)
       }
         .buttonStyle(.plain).help("Swap width and height")
         .ownShotNonFocusable()
@@ -322,7 +322,7 @@ private struct AnnotateImageSizePopover: View {
       Spacer().frame(width: 2)
       Button { locksAspectRatio.toggle() } label: {
         // Скобка с замком resizeLock эталона 23×33 pt в кнопке 33×54 pt (spec-039 editor-image-size).
-        OwnShotSymbols.image(locksAspectRatio ? "resizeLock" : "resizeLockOpen")
+        OwnShotIcons.image(locksAspectRatio ? "resizeLock" : "resizeLockOpen")
           .frame(width: 33, height: 54)
           .contentShape(Rectangle())
       }

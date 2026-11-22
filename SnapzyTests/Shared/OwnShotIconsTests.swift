@@ -4,10 +4,18 @@ import XCTest
 @testable import Snapzy
 
 @MainActor
-final class OwnShotSymbolsTests: XCTestCase {
-  func testДляКаждогоИнструментаЕстьСистемныйСимвол() {
-    for (name, symbol) in OwnShotSymbols.names {
-      XCTAssertNotNil(NSImage(systemSymbolName: symbol, accessibilityDescription: nil), name)
+final class OwnShotIconsTests: XCTestCase {
+  func testЗначкиЗагружаютсяИзКаталогаВСвоихРазмерах() throws {
+    let sizes: [String: NSSize] = [
+      "annotatePipette": NSSize(width: 14, height: 14),
+      "floatingOverlayDrag": NSSize(width: 39, height: 11),
+      "resizeLock": NSSize(width: 23, height: 33),
+      "recorderControlRestart": NSSize(width: 14, height: 17),
+      "onboardingMenubar": NSSize(width: 408, height: 208),
+    ]
+    for (name, size) in sizes {
+      let image = try XCTUnwrap(OwnShotIcons.nsImage(name), name)
+      XCTAssertEqual(image.size, size, name)
     }
   }
 
@@ -20,8 +28,7 @@ final class OwnShotSymbolsTests: XCTestCase {
   func testЗначкиИнструментовВидныВСветлойИТёмнойТеме() throws {
     for scheme in [ColorScheme.light, .dark] {
       for name in ["annotatePipette", "prefGeneral", "oneOverlayRecord", "popupPin", "recorderMicrophone"] {
-        let renderer = ImageRenderer(content: OwnShotSymbols.image(name)
-          .font(.system(size: 18))
+        let renderer = ImageRenderer(content: OwnShotIcons.image(name)
           .foregroundStyle(scheme == .light ? Color.black : Color.white)
           .frame(width: 32, height: 32)
           .environment(\.colorScheme, scheme))

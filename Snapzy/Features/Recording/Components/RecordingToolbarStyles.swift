@@ -127,7 +127,7 @@ extension ToolbarIconButtonLabel {
   fileprivate var glyph: some View {
     if let resourceName {
       // PDF эталона рисуется в собственном размере.
-      OwnShotSymbols.image(resourceName).renderingMode(.template)
+      OwnShotIcons.image(resourceName).renderingMode(.template)
     } else {
       Image(systemName: systemName).font(.system(size: iconSize, weight: .medium))
     }

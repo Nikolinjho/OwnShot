@@ -178,7 +178,7 @@ struct AnnotateSidebarView: View, Equatable {
   /// annotatePresetTrash 11×13, annotatePresetNew 11×11 pt.
   private func presetIconButton(resourceName: String, help: String, action: @escaping () -> Void) -> some View {
     Button(action: action) {
-      OwnShotSymbols.image(resourceName)
+      OwnShotIcons.image(resourceName)
         .renderingMode(.template)
         .foregroundColor(SidebarColors.labelSecondary)
         .frame(width: 20, height: 20)

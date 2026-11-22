@@ -117,7 +117,7 @@ struct AnnotateToolGlyph: View {
 
   var body: some View {
     if let resourceName {
-      OwnShotSymbols.image(resourceName).renderingMode(.template)
+      OwnShotIcons.image(resourceName).renderingMode(.template)
     } else {
       Image(systemName: tool.icon)
     }
@@ -157,7 +157,7 @@ struct AnnotateCaptureGlyph: View {
   let kind: Kind
 
   var body: some View {
-    OwnShotSymbols.image(resourceName).renderingMode(.template).accessibilityHidden(true)
+    OwnShotIcons.image(resourceName).renderingMode(.template).accessibilityHidden(true)
   }
 
   private var resourceName: String {

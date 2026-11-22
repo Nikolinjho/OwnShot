@@ -253,7 +253,7 @@ struct AnnotateBottomBarView: View {
       HStack(spacing: 9) {
         Text("\(state.currentDisplayedZoomPercent)%")
           .font(.system(size: 13))
-        OwnShotSymbols.image("annotateChevron").renderingMode(.template).accessibilityHidden(true)
+        OwnShotIcons.image("annotateChevron").renderingMode(.template).accessibilityHidden(true)
       }
       .foregroundStyle(controlActiveState == .inactive && colorScheme == .dark
         ? OwnShotEditorChrome.color(0xEEEDED) : Color.primary)
@@ -792,7 +792,7 @@ private struct OwnShotEditorBottomButton: View {
       // Глиф в неактивном окне не тускнеет: #E5E5E5 в тёмной теме в обоих состояниях
       // (R15, spec-050-visual/dark/editor-idle-on-000000.png и
       // spec-051-pairs/reference-dark/editor-inactive-on-000000.png).
-      OwnShotSymbols.image(resourceName).renderingMode(.template)
+      OwnShotIcons.image(resourceName).renderingMode(.template)
         .foregroundStyle(Color.primary)
         .frame(width: 36, height: 26)
         .modifier(OwnShotEditorCapsule(isActive: isHovered))

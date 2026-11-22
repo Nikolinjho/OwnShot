@@ -1,0 +1,21 @@
+{
+  "images": [
+    {
+      "filename": "annotateArrowStyleButtonFancy@1x.png",
+      "idiom": "universal",
+      "scale": "1x"
+    },
+    {
+      "filename": "annotateArrowStyleButtonFancy@2x.png",
+      "idiom": "universal",
+      "scale": "2x"
+    }
+  ],
+  "info": {
+    "author": "xcode",
+    "version": 1
+  },
+  "properties": {
+    "template-rendering-intent": "template"
+  }
+}

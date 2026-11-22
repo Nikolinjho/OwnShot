@@ -110,7 +110,7 @@ struct AnnotateColorPaletteView: View {
   }
 
   private var wheelImage: some View {
-    OwnShotSymbols.image("annotateColorPicker").frame(width: 24, height: 24)
+    OwnShotIcons.image("annotateColorPicker").frame(width: 24, height: 24)
   }
 
   private func presetButton(name: String, entry: Color) -> some View {
@@ -148,7 +148,7 @@ struct AnnotateColorPaletteView: View {
       fieldLabel(L10n.AnnotateColorPicker.hex).frame(width: 144).offset(x: 96, y: 243)
       Button(action: actions.pickFromScreen) {
         // Пипетка annotatePipette эталона, 14×14 pt.
-        OwnShotSymbols.image("annotatePipette").renderingMode(.template).foregroundStyle(theme.label)
+        OwnShotIcons.image("annotatePipette").renderingMode(.template).foregroundStyle(theme.label)
           .frame(width: 28, height: 28).contentShape(Rectangle())
       }.buttonStyle(.plain).help(L10n.AnnotateColorPicker.pickFromScreen)
         .accessibilityLabel(L10n.AnnotateColorPicker.pickFromScreen)
@@ -167,7 +167,7 @@ struct AnnotateColorPaletteView: View {
       Button(action: actions.addCurrentColor) {
         HStack(spacing: 6) {
           // Тонкий плюс annotatePresetNew эталона, 11×11 pt.
-          OwnShotSymbols.image("annotatePresetNew").renderingMode(.template)
+          OwnShotIcons.image("annotatePresetNew").renderingMode(.template)
           Text(L10n.AnnotateColorPicker.addToMyColors).font(.system(size: 15, weight: .medium))
         }
         .foregroundStyle(.white)
@@ -194,7 +194,7 @@ struct AnnotateColorPaletteView: View {
     ZStack(alignment: .topLeading) {
       RoundedRectangle(cornerRadius: 6, style: .continuous).fill(theme.panel).frame(width: 42, height: 17)
       // Ручка annotatePickerHandle эталона: две черты, 12×4 pt.
-      OwnShotSymbols.image("annotatePickerHandle").renderingMode(.template).foregroundStyle(theme.handle)
+      OwnShotIcons.image("annotatePickerHandle").renderingMode(.template).foregroundStyle(theme.handle)
         .frame(width: 12, height: 4).offset(x: 15, y: 6)
     }
     .frame(width: 42, height: 17, alignment: .topLeading)

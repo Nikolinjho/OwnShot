@@ -67,7 +67,7 @@ struct QuickAccessIconButton: View {
   @ViewBuilder
   private var glyph: some View {
     if let asset {
-      OwnShotSymbols.image(asset.resourceName)
+      OwnShotIcons.image(asset.resourceName)
         .renderingMode(.template)
         .resizable()
         .frame(width: asset.size.width, height: asset.size.height)

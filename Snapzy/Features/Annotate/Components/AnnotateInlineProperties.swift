@@ -190,7 +190,7 @@ struct AnnotateInlineProperties: View {
   }
 
   private var chevron: some View {
-    OwnShotSymbols.image("annotateChevron").renderingMode(.template).foregroundStyle(.secondary)
+    OwnShotIcons.image("annotateChevron").renderingMode(.template).foregroundStyle(.secondary)
   }
 
   private var redactionResourceName: String {
@@ -206,13 +206,13 @@ struct AnnotateInlineProperties: View {
     Button(action: action) {
       HStack(spacing: 5) {
         if title == "Thickness" {
-          OwnShotSymbols.image("annotateLineTool").renderingMode(.template)
+          OwnShotIcons.image("annotateLineTool").renderingMode(.template)
             .frame(width: 14, height: 16)
         } else if title == "Redaction style" {
-          OwnShotSymbols.image(redactionResourceName).renderingMode(.template)
+          OwnShotIcons.image(redactionResourceName).renderingMode(.template)
         } else if title == Self.counterSettingsTitle {
           // annotateCounterSettings эталона: «123..», 22×14 pt.
-          OwnShotSymbols.image("annotateCounterSettings").renderingMode(.template).frame(width: 22, height: 14)
+          OwnShotIcons.image("annotateCounterSettings").renderingMode(.template).frame(width: 22, height: 14)
         } else {
           Image(systemName: icon).font(.system(size: 14))
         }
@@ -262,7 +262,7 @@ private struct AnnotateArrowPresetGlyph: View {
   var isMenuPreview = false
 
   var body: some View {
-    OwnShotSymbols.image(resourceName).renderingMode(.template)
+    OwnShotIcons.image(resourceName).renderingMode(.template)
   }
 
   private var resourceName: String {
@@ -297,7 +297,7 @@ final class AnnotateRedactionMenuController: NSObject {
       item.target = self
       item.tag = index
       if #available(macOS 27.0, *) { item.preferredImageVisibility = .visible }
-      let image = OwnShotSymbols.nsImage("annotatePixelateStyle" + resources[index])
+      let image = OwnShotIcons.nsImage("annotatePixelateStyle" + resources[index])
       item.image = AnnotateMenuImage.make(image, emphasized: type == selectedType)
       menu.addItem(item)
     }
@@ -460,7 +460,7 @@ final class AnnotateArrowMenuController: NSObject {
       item.target = self
       if #available(macOS 27.0, *) { item.preferredImageVisibility = .visible }
       item.tag = index
-      let image = OwnShotSymbols.nsImage("annotateArrowStyle" + preset.rawValue)?.copy() as? NSImage
+      let image = OwnShotIcons.nsImage("annotateArrowStyle" + preset.rawValue)?.copy() as? NSImage
       image?.isTemplate = false
       item.image = AnnotateMenuImage.make(image, emphasized: preset == selectedPreset)
       menu.addItem(item)

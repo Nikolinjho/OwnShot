@@ -23,7 +23,7 @@ struct RecordingToolbarView: View {
             .foregroundStyle(valueColor)
           Spacer(minLength: 0)
           // recorderInfoButton эталона, 15×15 pt.
-          OwnShotSymbols.image("recorderInfoButton").frame(width: 15, height: 15)
+          OwnShotIcons.image("recorderInfoButton").frame(width: 15, height: 15)
         }
         .padding(.horizontal, 14)
         .frame(height: 42)
@@ -128,8 +128,8 @@ struct RecordingToolbarView: View {
       UserDefaults.standard.set(value.wrappedValue, forKey: preferenceKey)
     } label: {
       VStack(spacing: 2) {
-        OwnShotSymbols.image(resourceName).renderingMode(.template)
-        if value.wrappedValue { OwnShotSymbols.image("recorderTick").renderingMode(.template) }
+        OwnShotIcons.image(resourceName).renderingMode(.template)
+        if value.wrappedValue { OwnShotIcons.image("recorderTick").renderingMode(.template) }
       }
       .foregroundStyle(Color(nsColor: Self.toggleForeground(isOn: value.wrappedValue)))
       .frame(width: 50.8, height: 41)
@@ -157,9 +157,9 @@ struct RecordingToolbarView: View {
       HStack(spacing: 10) {
         // Глифы эталона: цветной recorderGifButton 19×12 pt и recorderVideoButton 19×10 pt.
         if mode == .gif {
-          OwnShotSymbols.image("recorderGifButton").frame(width: 20)
+          OwnShotIcons.image("recorderGifButton").frame(width: 20)
         } else {
-          OwnShotSymbols.image("recorderVideoButton").renderingMode(.template).frame(width: 20)
+          OwnShotIcons.image("recorderVideoButton").renderingMode(.template).frame(width: 20)
         }
         Text(mode == .gif ? "Record GIF" : "Record Video")
           .font(.system(size: 14, weight: .semibold))

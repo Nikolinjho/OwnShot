@@ -105,7 +105,7 @@ struct QuickAccessPinWindowView: View {
   private var lockButton: some View {
     // FOLockButton эталона: floatingOverlayLocked 8×12 pt и floatingOverlayUnlocked 12×12 pt.
     chromeButton(
-      glyph: OwnShotSymbols.image(state.isLocked ? "floatingOverlayLocked" : "floatingOverlayUnlocked")
+      glyph: OwnShotIcons.image(state.isLocked ? "floatingOverlayLocked" : "floatingOverlayUnlocked")
         .renderingMode(.template)
         .resizable()
         .frame(width: state.isLocked ? 8 : 12, height: 12),
@@ -154,7 +154,7 @@ struct QuickAccessPinWindowView: View {
     .frame(width: QuickAccessPinChromeMetrics.dragHandleSize.width, height: QuickAccessPinChromeMetrics.dragHandleSize.height)
     .overlay(
       // Оригинальный глиф ручки floatingOverlayDrag эталона, 39×11 pt.
-      OwnShotSymbols.image("floatingOverlayDrag")
+      OwnShotIcons.image("floatingOverlayDrag")
         .renderingMode(.template)
         .resizable()
         .frame(width: QuickAccessPinChromeMetrics.dragGlyphSize.width, height: QuickAccessPinChromeMetrics.dragGlyphSize.height)

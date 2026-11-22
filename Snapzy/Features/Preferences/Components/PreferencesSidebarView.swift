@@ -218,7 +218,7 @@ struct PreferencesSidebarIcon: View {
 
   var body: some View {
     if let resourceName {
-      OwnShotSymbols.image(resourceName)
+      OwnShotIcons.image(resourceName)
         .resizable()
         .frame(width: size, height: size)
     } else {
