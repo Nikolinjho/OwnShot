@@ -1,0 +1,190 @@
+//
+//  ToolbarOutputModeToggle.swift
+//  Snapzy
+//
+//  Small chevron-down dropdown button for switching recording output
+//  Designed as part of a button group with the Record button
+//
+
+import SwiftUI
+
+/// Small dropdown arrow button that opens output mode selection (Video / GIF)
+struct ToolbarOutputModeDropdown: View {
+  @ObservedObject var state: RecordingToolbarState
+
+  @State private var isHovered = false
+  @State private var showPopover = false
+
+  var body: some View {
+    Button {
+      showPopover.toggle()
+    } label: {
+      Image(systemName: "chevron.down")
+        .font(.system(size: 9, weight: .bold))
+        .foregroundColor(.primary.opacity(0.7))
+        .frame(width: 20, height: 30)
+        .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .onHover { hovering in
+      withAnimation(LiquidGlassTokens.hoverSpring) {
+        isHovered = hovering
+      }
+    }
+    .liquidGlassChrome(
+      shape: ToolbarConstants.buttonShape,
+      isVisible: isHovered || showPopover,
+      isActive: showPopover
+    )
+    .popover(isPresented: $showPopover, arrowEdge: .bottom) {
+      OutputModePopoverContent(state: state)
+    }
+    .accessibilityLabel(
+      "\(L10n.RecordingToolbar.outputModeAccessibilityPrefix): \(state.outputMode.displayName)"
+    )
+    .accessibilityHint(L10n.RecordingToolbar.outputModeHint)
+  }
+}
+
+/// Record button with inline badge showing current output mode (Video/GIF)
+struct RecordButtonWithBadge: View {
+  @ObservedObject var state: RecordingToolbarState
+  let onRecord: () -> Void
+
+  @State private var isHovered = false
+
+  var body: some View {
+    Button {
+      guard !state.isPreparingToRecord else { return }
+      onRecord()
+    } label: {
+      HStack(spacing: 6) {
+        Text(L10n.RecordingToolbar.record)
+          .font(.system(size: 13, weight: .regular))
+
+        // Output mode badge
+        Text(state.outputMode.displayName)
+          .font(.system(size: 8, weight: .semibold))
+          .foregroundColor(badgeTextColor)
+          .padding(.horizontal, 5)
+          .padding(.vertical, 2)
+          .background(
+            Capsule()
+              .fill(badgeBackgroundColor)
+          )
+      }
+      // Preparing-to-record dimming is applied to the label, not around the glass surface:
+      // an `.opacity()` wrapper would detach the backdrop (Rule 2).
+      .foregroundColor(.primary.opacity(state.isPreparingToRecord ? 0.65 : 1))
+      .padding(.horizontal, 12)
+      .padding(.vertical, 6)
+      // The glass chrome is applied to the outer button so it can merge with the adjacent
+      // output-mode control. Keep the label's hit shape explicit as well; Button otherwise
+      // falls back to the text and ignores the padded pill area.
+      .contentShape(ToolbarConstants.textButtonShape)
+    }
+    .buttonStyle(.plain)
+    .disabled(state.isPreparingToRecord)
+    .onHover { hovering in
+      withAnimation(LiquidGlassTokens.hoverSpring) {
+        isHovered = hovering
+      }
+    }
+    .liquidGlassChrome(
+      shape: ToolbarConstants.textButtonShape,
+      isVisible: isHovered && !state.isPreparingToRecord
+    )
+    .accessibilityLabel(L10n.RecordingToolbar.startRecordingAs(state.outputMode.displayName))
+    .accessibilityHint(L10n.RecordingToolbar.startRecordingHint)
+  }
+
+  private var badgeTextColor: Color {
+    state.outputMode == .gif ? .white : .white
+  }
+
+  private var badgeBackgroundColor: Color {
+    state.outputMode == .gif ? .orange : .accentColor
+  }
+}
+
+// MARK: - Popover Content
+
+private struct OutputModePopoverContent: View {
+  @ObservedObject var state: RecordingToolbarState
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 4) {
+      ForEach(RecordingOutputMode.allCases, id: \.self) { mode in
+        OutputModeRow(
+          mode: mode,
+          isSelected: state.outputMode == mode
+        ) {
+          state.outputMode = mode
+          // Persist selection
+          UserDefaults.standard.set(mode.rawValue, forKey: PreferencesKeys.recordingOutputMode)
+        }
+      }
+    }
+    .padding(8)
+    .frame(width: 160)
+  }
+}
+
+// MARK: - Output Mode Row
+
+private struct OutputModeRow: View {
+  let mode: RecordingOutputMode
+  let isSelected: Bool
+  let action: () -> Void
+
+  @State private var isHovered = false
+
+  var body: some View {
+    Button(action: action) {
+      HStack(spacing: 8) {
+        Image(systemName: mode.iconName)
+          .font(.system(size: 12))
+          .foregroundColor(isSelected ? selectedInk : .secondary)
+          .frame(width: 16)
+
+        Text(mode.displayName)
+          .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
+          .foregroundColor(isSelected ? selectedInk : .primary)
+
+        Spacer()
+
+        if isSelected {
+          Image(systemName: "checkmark")
+            .font(.system(size: 10, weight: .bold))
+            .foregroundColor(selectedInk)
+        }
+      }
+      .padding(.horizontal, 8)
+      .padding(.vertical, 6)
+      .liquidGlassChrome(
+        shape: Capsule(style: .continuous),
+        isVisible: isHovered || isSelected,
+        isActive: isSelected,
+        glassTint: isSelected ? .accentColor : nil
+      )
+    }
+    .buttonStyle(.plain)
+    .onHover { hovering in
+      withAnimation(LiquidGlassTokens.hoverSpring) { isHovered = hovering }
+    }
+  }
+
+  /// The selected row's surface carries the accent tint, so accent-coloured glyphs would sit on
+  /// accent glass and the neutral label would go dark on it in Light theme.
+  private var selectedInk: Color { LiquidGlassTokens.inkOnAccent }
+}
+
+#Preview {
+  HStack(spacing: 1) {
+    RecordButtonWithBadge(state: RecordingToolbarState(), onRecord: {})
+    ToolbarOutputModeDropdown(state: RecordingToolbarState())
+  }
+  .padding(10)
+  .background(.ultraThinMaterial)
+  .clipShape(Radius.rect(Radius.card))
+}

@@ -1,0 +1,182 @@
+//
+//  AnnotationToolType.swift
+//  Snapzy
+//
+//  Enum defining all available annotation tools
+//
+
+import Foundation
+
+/// Tool types available in annotation editor
+nonisolated enum AnnotationToolType: String, CaseIterable, Identifiable {
+  case selection
+  case crop
+  case cutOut
+  case rectangle
+  case filledRectangle
+  case oval
+  case arrow
+  case line
+  case text
+  case highlighter
+  case blur
+  case spotlight
+  case counter
+  case watermark
+  case pencil
+  case measure
+  case mockup
+
+  var id: String { rawValue }
+
+  /// Annotation tools that create or edit drawable items on the image canvas.
+  /// Shared by the full Annotate window and inline area-annotate overlay so the
+  /// two surfaces stay in sync when tools are added.
+  static let drawableTools: [AnnotationToolType] = [
+    .rectangle, .filledRectangle, .oval, .line, .arrow, .text,
+    .blur, .spotlight, .counter, .pencil, .highlighter, .measure, .watermark
+  ]
+
+  static let inlineAnnotateTools: [AnnotationToolType] = [.selection] + drawableTools
+
+  private static let inlineShapeToolSet: Set<AnnotationToolType> = [
+    .rectangle, .filledRectangle, .oval, .arrow, .line
+  ]
+
+  static let inlineToolGroups: [[AnnotationToolType]] = [
+    [.selection],
+    drawableTools.filter { inlineShapeToolSet.contains($0) },
+    drawableTools.filter { !inlineShapeToolSet.contains($0) }
+  ]
+
+  var icon: String {
+    switch self {
+    case .selection: return "cursorarrow"
+    case .crop: return "crop"
+    case .cutOut: return "scissors"
+    case .rectangle: return "rectangle"
+    case .filledRectangle: return "rectangle.fill"
+    case .oval: return "circle"
+    case .arrow: return "arrow.up.right"
+    case .line: return "line.diagonal"
+    case .text: return "character.textbox"
+    case .highlighter: return "highlighter"
+    case .blur: return "eye.slash"
+    case .spotlight: return "viewfinder"
+    case .counter: return "list.number"
+    case .watermark: return "seal"
+    case .pencil: return "pencil"
+    case .measure: return "ruler"
+    case .mockup: return "cube.transparent"
+    }
+  }
+
+  /// Default keyboard shortcut for this tool
+  var defaultShortcut: Character {
+    switch self {
+    case .selection: return "v"
+    case .crop: return "k"
+    case .cutOut: return "x"
+    case .rectangle: return "r"
+    case .filledRectangle: return "f"
+    case .oval: return "e"
+    case .arrow: return "a"
+    case .line: return "l"
+    case .text: return "t"
+    case .highlighter: return "m"
+    case .blur: return "p"
+    case .spotlight: return "h"
+    case .counter: return "c"
+    case .watermark: return "w"
+    case .pencil: return "d"
+    case .measure: return "u"
+    case .mockup: return "j"
+    }
+  }
+
+  /// Display name for the tool
+  var displayName: String {
+    switch self {
+    case .selection: return "Move"
+    case .crop: return L10n.Annotate.cropTool
+    case .cutOut: return L10n.Annotate.cutOutTool
+    case .rectangle: return L10n.Annotate.rectangleTool
+    case .filledRectangle: return L10n.Annotate.filledRectangleTool
+    case .oval: return "Ellipse"
+    case .arrow: return L10n.Annotate.arrowTool
+    case .line: return L10n.Annotate.lineTool
+    case .text: return L10n.Annotate.textTool
+    case .highlighter: return L10n.Annotate.highlighterTool
+    case .blur: return "Redact"
+    case .spotlight: return L10n.Annotate.spotlightTool
+    case .counter: return L10n.Annotate.counterTool
+    case .watermark: return L10n.Annotate.watermarkTool
+    case .pencil: return "Draw"
+    case .measure: return L10n.Annotate.measureTool
+    case .mockup: return L10n.Annotate.mockupTool
+    }
+  }
+
+  var supportsQuickPropertiesBar: Bool {
+    switch self {
+    case .rectangle, .filledRectangle, .oval, .arrow, .line, .text, .highlighter, .blur, .spotlight, .counter, .measure, .watermark, .pencil:
+      return true
+    case .selection, .crop, .cutOut, .mockup:
+      return false
+    }
+  }
+
+  /// Drawable tools that should only commit a new blank-canvas item after a
+  /// drag intent. Counter and Measure stay click-to-place, text keeps its click-to-edit
+  /// flow, and freehand tools keep their existing path-count behavior.
+  var requiresDragToCreateAnnotation: Bool {
+    switch self {
+    case .rectangle, .filledRectangle, .oval, .arrow, .line, .blur, .spotlight, .watermark:
+      return true
+    case .selection, .crop, .cutOut, .text, .highlighter, .counter, .measure, .pencil, .mockup:
+      return false
+    }
+  }
+
+  /// У Spotlight эталона нет Color и Thickness: только форма и слайдер затемнения.
+  var supportsQuickStrokeColor: Bool {
+    switch self {
+    case .rectangle, .filledRectangle, .oval, .arrow, .line, .text, .highlighter, .counter, .measure, .watermark, .pencil:
+      return true
+    case .selection, .crop, .cutOut, .blur, .spotlight, .mockup:
+      return false
+    }
+  }
+
+  var supportsQuickFillColor: Bool {
+    false
+  }
+
+  /// Filled Rectangle и Spotlight эталона толщины не показывают (editor-tool-*.json).
+  var supportsQuickStrokeWidth: Bool {
+    switch self {
+    case .rectangle, .oval, .arrow, .line, .highlighter, .blur, .counter, .pencil:
+      return true
+    case .selection, .crop, .cutOut, .filledRectangle, .spotlight, .text, .measure, .watermark, .mockup:
+      return false
+    }
+  }
+
+  var supportsQuickCornerRadius: Bool {
+    switch self {
+    case .rectangle, .filledRectangle, .text, .spotlight:
+      return true
+    case .selection, .crop, .cutOut, .oval, .arrow, .line, .highlighter, .blur, .counter, .measure, .watermark, .pencil, .mockup:
+      return false
+    }
+  }
+
+  var supportsQuickLineStyle: Bool {
+    switch self {
+    case .rectangle, .filledRectangle, .oval, .arrow, .line, .spotlight:
+      return true
+    case .selection, .crop, .cutOut, .text, .highlighter, .blur, .counter, .measure, .watermark, .pencil, .mockup:
+      return false
+    }
+  }
+}

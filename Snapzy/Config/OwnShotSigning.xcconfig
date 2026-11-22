@@ -1,0 +1,8 @@
+// Xcode поддерживает сборку с подписью ad hoc. Скрипт установки требует отдельную закреплённую идентичность.
+OWN_SHOT_SIGNING_IDENTITY = -
+#include? "../../.local-signing/Signing.xcconfig"
+
+CODE_SIGN_IDENTITY = $(OWN_SHOT_SIGNING_IDENTITY)
+CODE_SIGN_STYLE = Manual
+DEVELOPMENT_TEAM =
+CODE_SIGNING_REQUIRED = YES

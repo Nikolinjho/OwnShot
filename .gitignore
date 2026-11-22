@@ -1,0 +1,31 @@
+.claude
+.agents
+.agent1
+
+sparkle_private_key.pem
+
+# Packages/**/*.build
+.build
+/build
+/.local-signing/
+
+/tmp/
+
+# Secrets - never commit
+Snapzy/Config/Secrets.xcconfig
+*.xcuserstate
+
+/plans
+
+.codex
+
+.dd
+
+# Сырые наблюдения сверки паритета (8+ ГБ), в репозиторий не кладутся
+/evidence/
+__pycache__/
+/build-*/
+*.profraw
+
+# Local Xcode workspace state
+xcuserdata/

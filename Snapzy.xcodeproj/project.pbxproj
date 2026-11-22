@@ -1,0 +1,1430 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A31BF0A82F1CF69100902D12 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = A31BF0A72F1CF69100902D12 /* Sparkle */; };
+		B42DE1A02FA1B90000WEBP01 /* WebP in Frameworks */ = {isa = PBXBuildFile; productRef = B42DE1A12FA1B90000WEBP01 /* WebP */; };
+		C73DB2A02FA3GRDB00GRDB01 /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = C73DB2A12FA3GRDB00GRDB01 /* GRDB */; };
+		C11CL1012FB0000000CLI003 /* SnapzyCLIProtocol in Frameworks */ = {isa = PBXBuildFile; productRef = C11CL1012FB0000000CLI002 /* SnapzyCLIProtocol */; };
+		C11CL1012FB0000000CLI016 /* SnapzyCLICore in Frameworks */ = {isa = PBXBuildFile; productRef = C11CL1012FB0000000CLI015 /* SnapzyCLICore */; };
+		C11CL1012FB0000000MSR002 /* SnapzyMeasureCore in Frameworks */ = {isa = PBXBuildFile; productRef = C11CL1012FB0000000MSR001 /* SnapzyMeasureCore */; };
+		C11CL1012FB0000000CLI01E /* snapzy in Embed Command Line Tool */ = {isa = PBXBuildFile; fileRef = C11CL1012FB0000000CLI010 /* snapzy */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		E061EA00000000000000000C /* AnnotateShareExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = E061EA000000000000000002 /* AnnotateShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		E061EA00000000000000001A /* PinShareExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = E061EA000000000000000010 /* PinShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		E061EA000000000000000028 /* QuickLookExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = E061EA00000000000000001E /* QuickLookExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		E061EA000000000000000036 /* QuickLookThumbnailingExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = E061EA00000000000000002C /* QuickLookThumbnailingExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		D00100082F9F000000000008 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A364629B2F18EEDA0003453D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A36462A22F18EEDA0003453D;
+			remoteInfo = Snapzy;
+		};
+		C11CL1012FB0000000CLI01C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A364629B2F18EEDA0003453D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = C11CL1012FB0000000CLI012;
+			remoteInfo = SnapzyCLI;
+		};
+		E061EA00000000000000000D /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A364629B2F18EEDA0003453D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = E061EA000000000000000001;
+			remoteInfo = AnnotateShareExtension;
+		};
+		E061EA00000000000000001B /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A364629B2F18EEDA0003453D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = E061EA00000000000000000F;
+			remoteInfo = PinShareExtension;
+		};
+		E061EA000000000000000029 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A364629B2F18EEDA0003453D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = E061EA00000000000000001D;
+			remoteInfo = QuickLookExtension;
+		};
+		E061EA000000000000000037 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A364629B2F18EEDA0003453D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = E061EA00000000000000002B;
+			remoteInfo = QuickLookThumbnailingExtension;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		C11CL1012FB0000000CLI01D /* Embed Command Line Tool */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = Contents/Helpers;
+			dstSubfolderSpec = 1;
+			files = (
+				C11CL1012FB0000000CLI01E /* snapzy in Embed Command Line Tool */,
+			);
+			name = "Embed Command Line Tool";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E061EA000000000000000039 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				E061EA00000000000000000C /* AnnotateShareExtension.appex in Embed Foundation Extensions */,
+				E061EA00000000000000001A /* PinShareExtension.appex in Embed Foundation Extensions */,
+				E061EA000000000000000028 /* QuickLookExtension.appex in Embed Foundation Extensions */,
+				E061EA000000000000000036 /* QuickLookThumbnailingExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		05A100002F00000000000001 /* OwnShotSigning.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Snapzy/Config/OwnShotSigning.xcconfig; sourceTree = SOURCE_ROOT; };
+		A36462A32F18EEDA0003453D /* Snapzy Debug.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OwnShot.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		D00100012F9F000000000001 /* SnapzyTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SnapzyTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		D00110022F9F000000000002 /* Snapzy.xctestplan */ = {isa = PBXFileReference; lastKnownFileType = text; path = Snapzy.xctestplan; sourceTree = "<group>"; };
+		C11CL1012FB0000000CLI010 /* snapzy */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = snapzy; sourceTree = BUILT_PRODUCTS_DIR; };
+		E061EA000000000000000002 /* AnnotateShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = AnnotateShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		E061EA000000000000000010 /* PinShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = PinShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		E061EA00000000000000001E /* QuickLookExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = QuickLookExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		E061EA00000000000000002C /* QuickLookThumbnailingExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = QuickLookThumbnailingExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		A3A629C62F5E9E4E00E06B7C /* Exceptions for "Snapzy" folder in "Snapzy" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Config/Secrets.xcconfig,
+				Resources/Info.plist,
+				Resources/Localization/Generated/README.md,
+				Resources/Localization/README.md,
+			);
+			target = A36462A22F18EEDA0003453D /* Snapzy */;
+		};
+		E061EA000000000000000004 /* Exceptions for "AnnotateShareExtension" folder in "AnnotateShareExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				AnnotateShareExtension.entitlements,
+				Info.plist,
+			);
+			target = E061EA000000000000000001 /* AnnotateShareExtension */;
+		};
+		E061EA000000000000000005 /* Exceptions for "Snapzy" folder in "AnnotateShareExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Shared/AppExtensions/OwnShotShareHandoff.swift,
+			);
+			target = E061EA000000000000000001 /* AnnotateShareExtension */;
+		};
+		E061EA000000000000000012 /* Exceptions for "PinShareExtension" folder in "PinShareExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				PinShareExtension.entitlements,
+				Info.plist,
+			);
+			target = E061EA00000000000000000F /* PinShareExtension */;
+		};
+		E061EA000000000000000013 /* Exceptions for "Snapzy" folder in "PinShareExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Shared/AppExtensions/OwnShotShareHandoff.swift,
+			);
+			target = E061EA00000000000000000F /* PinShareExtension */;
+		};
+		E061EA000000000000000020 /* Exceptions for "QuickLookExtension" folder in "QuickLookExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				QuickLookExtension.entitlements,
+				Info.plist,
+			);
+			target = E061EA00000000000000001D /* QuickLookExtension */;
+		};
+		E061EA000000000000000021 /* Exceptions for "Snapzy" folder in "QuickLookExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Features/CrashReport/ZipArchiveReader.swift,
+				Features/CrashReport/ZipArchiveWriter.swift,
+				Shared/AppExtensions/OwnShotProjectPreviewReader.swift,
+			);
+			target = E061EA00000000000000001D /* QuickLookExtension */;
+		};
+		E061EA00000000000000002E /* Exceptions for "QuickLookThumbnailingExtension" folder in "QuickLookThumbnailingExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				QuickLookThumbnailingExtension.entitlements,
+				Info.plist,
+			);
+			target = E061EA00000000000000002B /* QuickLookThumbnailingExtension */;
+		};
+		E061EA00000000000000002F /* Exceptions for "Snapzy" folder in "QuickLookThumbnailingExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Features/CrashReport/ZipArchiveReader.swift,
+				Features/CrashReport/ZipArchiveWriter.swift,
+				Shared/AppExtensions/OwnShotProjectPreviewReader.swift,
+			);
+			target = E061EA00000000000000002B /* QuickLookThumbnailingExtension */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		A36462A52F18EEDA0003453D /* Snapzy */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				A3A629C62F5E9E4E00E06B7C /* Exceptions for "Snapzy" folder in "Snapzy" target */,
+				E061EA000000000000000005 /* Exceptions for "Snapzy" folder in "AnnotateShareExtension" target */,
+				E061EA000000000000000013 /* Exceptions for "Snapzy" folder in "PinShareExtension" target */,
+				E061EA000000000000000021 /* Exceptions for "Snapzy" folder in "QuickLookExtension" target */,
+				E061EA00000000000000002F /* Exceptions for "Snapzy" folder in "QuickLookThumbnailingExtension" target */,
+			);
+			path = Snapzy;
+			sourceTree = "<group>";
+		};
+		D00100032F9F000000000003 /* SnapzyTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = SnapzyTests;
+			sourceTree = "<group>";
+		};
+		C11CL1012FB0000000CLI011 /* SnapzyCLI */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = SnapzyCLI;
+			sourceTree = "<group>";
+		};
+		E061EA000000000000000003 /* AnnotateShareExtension */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				E061EA000000000000000004 /* Exceptions for "AnnotateShareExtension" folder in "AnnotateShareExtension" target */,
+			);
+			path = OwnShotExtensions/AnnotateShareExtension;
+			sourceTree = "<group>";
+		};
+		E061EA000000000000000011 /* PinShareExtension */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				E061EA000000000000000012 /* Exceptions for "PinShareExtension" folder in "PinShareExtension" target */,
+			);
+			path = OwnShotExtensions/PinShareExtension;
+			sourceTree = "<group>";
+		};
+		E061EA00000000000000001F /* QuickLookExtension */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				E061EA000000000000000020 /* Exceptions for "QuickLookExtension" folder in "QuickLookExtension" target */,
+			);
+			path = OwnShotExtensions/QuickLookExtension;
+			sourceTree = "<group>";
+		};
+		E061EA00000000000000002D /* QuickLookThumbnailingExtension */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				E061EA00000000000000002E /* Exceptions for "QuickLookThumbnailingExtension" folder in "QuickLookThumbnailingExtension" target */,
+			);
+			path = OwnShotExtensions/QuickLookThumbnailingExtension;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A36462A02F18EEDA0003453D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A31BF0A82F1CF69100902D12 /* Sparkle in Frameworks */,
+				B42DE1A02FA1B90000WEBP01 /* WebP in Frameworks */,
+				C73DB2A02FA3GRDB00GRDB01 /* GRDB in Frameworks */,
+				C11CL1012FB0000000CLI003 /* SnapzyCLIProtocol in Frameworks */,
+				C11CL1012FB0000000MSR002 /* SnapzyMeasureCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D00100042F9F000000000004 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C11CL1012FB0000000CLI014 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C11CL1012FB0000000CLI016 /* SnapzyCLICore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E061EA000000000000000007 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E061EA000000000000000015 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E061EA000000000000000023 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E061EA000000000000000031 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A364629A2F18EEDA0003453D = {
+			isa = PBXGroup;
+			children = (
+				05A100002F00000000000001 /* OwnShotSigning.xcconfig */,
+				D00110022F9F000000000002 /* Snapzy.xctestplan */,
+				A36462A52F18EEDA0003453D /* Snapzy */,
+				D00100032F9F000000000003 /* SnapzyTests */,
+				C11CL1012FB0000000CLI011 /* SnapzyCLI */,
+				E061EA000000000000000003 /* AnnotateShareExtension */,
+				E061EA000000000000000011 /* PinShareExtension */,
+				E061EA00000000000000001F /* QuickLookExtension */,
+				E061EA00000000000000002D /* QuickLookThumbnailingExtension */,
+				A36462A42F18EEDA0003453D /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A36462A42F18EEDA0003453D /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A36462A32F18EEDA0003453D /* Snapzy Debug.app */,
+				D00100012F9F000000000001 /* SnapzyTests.xctest */,
+				C11CL1012FB0000000CLI010 /* snapzy */,
+				E061EA000000000000000002 /* AnnotateShareExtension.appex */,
+				E061EA000000000000000010 /* PinShareExtension.appex */,
+				E061EA00000000000000001E /* QuickLookExtension.appex */,
+				E061EA00000000000000002C /* QuickLookThumbnailingExtension.appex */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A36462A22F18EEDA0003453D /* Snapzy */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A36462B02F18EEDB0003453D /* Build configuration list for PBXNativeTarget "Snapzy" */;
+			buildPhases = (
+				A36462C02F18EEDA0003453D /* SwiftFormat */,
+				A364629F2F18EEDA0003453D /* Sources */,
+				A36462A02F18EEDA0003453D /* Frameworks */,
+				A36462A12F18EEDA0003453D /* Resources */,
+				C11CL1012FB0000000CLI01D /* Embed Command Line Tool */,
+				E061EA000000000000000039 /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				C11CL1012FB0000000CLI01B /* PBXTargetDependency */,
+				E061EA00000000000000000E /* PBXTargetDependency */,
+				E061EA00000000000000001C /* PBXTargetDependency */,
+				E061EA00000000000000002A /* PBXTargetDependency */,
+				E061EA000000000000000038 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				A36462A52F18EEDA0003453D /* Snapzy */,
+			);
+			name = Snapzy;
+			packageProductDependencies = (
+				A31BF0A72F1CF69100902D12 /* Sparkle */,
+				B42DE1A12FA1B90000WEBP01 /* WebP */,
+				C73DB2A12FA3GRDB00GRDB01 /* GRDB */,
+				C11CL1012FB0000000CLI002 /* SnapzyCLIProtocol */,
+				C11CL1012FB0000000MSR001 /* SnapzyMeasureCore */,
+			);
+			productName = Snapzy;
+			productReference = A36462A32F18EEDA0003453D /* Snapzy Debug.app */;
+			productType = "com.apple.product-type.application";
+		};
+		D00100072F9F000000000007 /* SnapzyTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D001000C2F9F00000000000C /* Build configuration list for PBXNativeTarget "SnapzyTests" */;
+			buildPhases = (
+				D00100062F9F000000000006 /* Sources */,
+				D00100042F9F000000000004 /* Frameworks */,
+				D00100052F9F000000000005 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				D00100092F9F000000000009 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				D00100032F9F000000000003 /* SnapzyTests */,
+			);
+			name = SnapzyTests;
+			packageProductDependencies = (
+			);
+			productName = SnapzyTests;
+			productReference = D00100012F9F000000000001 /* SnapzyTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		C11CL1012FB0000000CLI012 /* SnapzyCLI */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C11CL1012FB0000000CLI017 /* Build configuration list for PBXNativeTarget "SnapzyCLI" */;
+			buildPhases = (
+				C11CL1012FB0000000CLI013 /* Sources */,
+				C11CL1012FB0000000CLI014 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				C11CL1012FB0000000CLI011 /* SnapzyCLI */,
+			);
+			name = SnapzyCLI;
+			packageProductDependencies = (
+				C11CL1012FB0000000CLI015 /* SnapzyCLICore */,
+			);
+			productName = snapzy;
+			productReference = C11CL1012FB0000000CLI010 /* snapzy */;
+			productType = "com.apple.product-type.tool";
+		};
+		E061EA000000000000000001 /* AnnotateShareExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E061EA000000000000000009 /* Build configuration list for PBXNativeTarget "AnnotateShareExtension" */;
+			buildPhases = (
+				E061EA000000000000000006 /* Sources */,
+				E061EA000000000000000007 /* Frameworks */,
+				E061EA000000000000000008 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				E061EA000000000000000003 /* AnnotateShareExtension */,
+			);
+			name = AnnotateShareExtension;
+			packageProductDependencies = (
+			);
+			productName = AnnotateShareExtension;
+			productReference = E061EA000000000000000002 /* AnnotateShareExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		E061EA00000000000000000F /* PinShareExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E061EA000000000000000017 /* Build configuration list for PBXNativeTarget "PinShareExtension" */;
+			buildPhases = (
+				E061EA000000000000000014 /* Sources */,
+				E061EA000000000000000015 /* Frameworks */,
+				E061EA000000000000000016 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				E061EA000000000000000011 /* PinShareExtension */,
+			);
+			name = PinShareExtension;
+			packageProductDependencies = (
+			);
+			productName = PinShareExtension;
+			productReference = E061EA000000000000000010 /* PinShareExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		E061EA00000000000000001D /* QuickLookExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E061EA000000000000000025 /* Build configuration list for PBXNativeTarget "QuickLookExtension" */;
+			buildPhases = (
+				E061EA000000000000000022 /* Sources */,
+				E061EA000000000000000023 /* Frameworks */,
+				E061EA000000000000000024 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				E061EA00000000000000001F /* QuickLookExtension */,
+			);
+			name = QuickLookExtension;
+			packageProductDependencies = (
+			);
+			productName = QuickLookExtension;
+			productReference = E061EA00000000000000001E /* QuickLookExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		E061EA00000000000000002B /* QuickLookThumbnailingExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E061EA000000000000000033 /* Build configuration list for PBXNativeTarget "QuickLookThumbnailingExtension" */;
+			buildPhases = (
+				E061EA000000000000000030 /* Sources */,
+				E061EA000000000000000031 /* Frameworks */,
+				E061EA000000000000000032 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				E061EA00000000000000002D /* QuickLookThumbnailingExtension */,
+			);
+			name = QuickLookThumbnailingExtension;
+			packageProductDependencies = (
+			);
+			productName = QuickLookThumbnailingExtension;
+			productReference = E061EA00000000000000002C /* QuickLookThumbnailingExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A364629B2F18EEDA0003453D /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2620;
+				LastUpgradeCheck = 2620;
+				TargetAttributes = {
+					A36462A22F18EEDA0003453D = {
+						CreatedOnToolsVersion = 26.2;
+					};
+					D00100072F9F000000000007 = {
+						CreatedOnToolsVersion = 26.2;
+						TestTargetID = A36462A22F18EEDA0003453D;
+					};
+					C11CL1012FB0000000CLI012 = {
+						CreatedOnToolsVersion = 26.4;
+					};
+					E061EA000000000000000001 = {
+						CreatedOnToolsVersion = 27.0;
+					};
+					E061EA00000000000000000F = {
+						CreatedOnToolsVersion = 27.0;
+					};
+					E061EA00000000000000001D = {
+						CreatedOnToolsVersion = 27.0;
+					};
+					E061EA00000000000000002B = {
+						CreatedOnToolsVersion = 27.0;
+					};
+				};
+			};
+			buildConfigurationList = A364629E2F18EEDA0003453D /* Build configuration list for PBXProject "Snapzy" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				vi,
+				Base,
+				"zh-Hans",
+				"zh-Hant",
+				es,
+				ja,
+				ko,
+				ru,
+				fr,
+				de,
+			);
+			mainGroup = A364629A2F18EEDA0003453D;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				A31BF0A62F1CF69100902D12 /* XCRemoteSwiftPackageReference "Sparkle" */,
+				B42DE19F2FA1B90000WEBP01 /* XCRemoteSwiftPackageReference "Swift-WebP" */,
+				C73DB19F2FA3GRDB00GRDB01 /* XCRemoteSwiftPackageReference "GRDB.swift" */,
+				C11CL1012FB0000000CLI001 /* XCLocalSwiftPackageReference "Packages/SnapzyCLIKit" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = A36462A42F18EEDA0003453D /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				A36462A22F18EEDA0003453D /* Snapzy */,
+				D00100072F9F000000000007 /* SnapzyTests */,
+				C11CL1012FB0000000CLI012 /* SnapzyCLI */,
+				E061EA000000000000000001 /* AnnotateShareExtension */,
+				E061EA00000000000000000F /* PinShareExtension */,
+				E061EA00000000000000001D /* QuickLookExtension */,
+				E061EA00000000000000002B /* QuickLookThumbnailingExtension */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A36462A12F18EEDA0003453D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D00100052F9F000000000005 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E061EA000000000000000008 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E061EA000000000000000016 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E061EA000000000000000024 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E061EA000000000000000032 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		A36462C02F18EEDA0003453D /* SwiftFormat */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = SwiftFormat;
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/SwiftFormat.disabled.stamp",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "if which swiftformat >/dev/null; then\n  # swiftformat \"${SRCROOT}/Snapzy\" \"${SRCROOT}/SnapzyTests\"\n  echo \"SwiftFormat is configured but disabled by default.\"\nelse\n  echo \"SwiftFormat is not installed; formatting remains disabled.\"\nfi\ntouch \"$SCRIPT_OUTPUT_FILE_0\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A364629F2F18EEDA0003453D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D00100062F9F000000000006 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C11CL1012FB0000000CLI013 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E061EA000000000000000006 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E061EA000000000000000014 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E061EA000000000000000022 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E061EA000000000000000030 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		D00100092F9F000000000009 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A36462A22F18EEDA0003453D /* Snapzy */;
+			targetProxy = D00100082F9F000000000008 /* PBXContainerItemProxy */;
+		};
+		C11CL1012FB0000000CLI01B /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = C11CL1012FB0000000CLI012 /* SnapzyCLI */;
+			targetProxy = C11CL1012FB0000000CLI01C /* PBXContainerItemProxy */;
+		};
+		E061EA00000000000000000E /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = E061EA000000000000000001 /* AnnotateShareExtension */;
+			targetProxy = E061EA00000000000000000D /* PBXContainerItemProxy */;
+		};
+		E061EA00000000000000001C /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = E061EA00000000000000000F /* PinShareExtension */;
+			targetProxy = E061EA00000000000000001B /* PBXContainerItemProxy */;
+		};
+		E061EA00000000000000002A /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = E061EA00000000000000001D /* QuickLookExtension */;
+			targetProxy = E061EA000000000000000029 /* PBXContainerItemProxy */;
+		};
+		E061EA000000000000000038 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = E061EA00000000000000002B /* QuickLookThumbnailingExtension */;
+			targetProxy = E061EA000000000000000037 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		A36462AE2F18EEDB0003453D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 05A100002F00000000000001 /* OwnShotSigning.xcconfig */;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				OWN_SHOT_APP_PRODUCT_NAME = OwnShot;
+				OWN_SHOT_APP_BUNDLE_IDENTIFIER = dev.nikoko.ownshot;
+				OWN_SHOT_APP_INFO_PLIST = Snapzy/Resources/Info.plist;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		A36462AF2F18EEDB0003453D /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 05A100002F00000000000001 /* OwnShotSigning.xcconfig */;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = "";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				OWN_SHOT_APP_PRODUCT_NAME = OwnShot;
+				OWN_SHOT_APP_BUNDLE_IDENTIFIER = dev.nikoko.ownshot;
+				OWN_SHOT_APP_INFO_PLIST = Snapzy/Resources/Info.plist;
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+		A36462B12F18EEDB0003453D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
+				CODE_SIGN_ENTITLEMENTS = Snapzy/Snapzy.entitlements;
+				CODE_SIGN_IDENTITY = "$(OWN_SHOT_SIGNING_IDENTITY)";
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SELECTED_FILES = readwrite;
+				EXECUTABLE_NAME = Snapzy;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "$(OWN_SHOT_APP_INFO_PLIST)";
+				INFOPLIST_KEY_CFBundleDisplayName = "$(OWN_SHOT_APP_PRODUCT_NAME)";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_LSUIElement = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(OWN_SHOT_APP_BUNDLE_IDENTIFIER)";
+				PRODUCT_MODULE_NAME = Snapzy;
+				PRODUCT_NAME = "$(OWN_SHOT_APP_PRODUCT_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SNAPZY_BUNDLE_NAME = "$(OWN_SHOT_APP_PRODUCT_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		A36462B22F18EEDB0003453D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
+				CODE_SIGN_ENTITLEMENTS = Snapzy/Snapzy.entitlements;
+				CODE_SIGN_IDENTITY = "$(OWN_SHOT_SIGNING_IDENTITY)";
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SELECTED_FILES = readwrite;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "$(OWN_SHOT_APP_INFO_PLIST)";
+				INFOPLIST_KEY_CFBundleDisplayName = "$(OWN_SHOT_APP_PRODUCT_NAME)";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_LSUIElement = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(OWN_SHOT_APP_BUNDLE_IDENTIFIER)";
+				PRODUCT_MODULE_NAME = Snapzy;
+				EXECUTABLE_NAME = Snapzy;
+				PRODUCT_NAME = "$(OWN_SHOT_APP_PRODUCT_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SNAPZY_BUNDLE_NAME = "$(OWN_SHOT_APP_PRODUCT_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		D001000A2F9F00000000000A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_IDENTITY = "$(OWN_SHOT_SIGNING_IDENTITY)";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.nikoko.ownshot.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/$(OWN_SHOT_APP_PRODUCT_NAME).app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Snapzy";
+			};
+			name = Debug;
+		};
+		D001000B2F9F00000000000B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_IDENTITY = "$(OWN_SHOT_SIGNING_IDENTITY)";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.nikoko.ownshot.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/$(OWN_SHOT_APP_PRODUCT_NAME).app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Snapzy";
+			};
+			name = Release;
+		};
+		C11CL1012FB0000000CLI019 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "$(OWN_SHOT_SIGNING_IDENTITY)";
+				CODE_SIGN_STYLE = Manual;
+				CREATE_INFOPLIST_SECTION_IN_BINARY = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.nikoko.ownshot.cli;
+				PRODUCT_MODULE_NAME = SnapzyCLIMain;
+				PRODUCT_NAME = snapzy;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		C11CL1012FB0000000CLI01A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "$(OWN_SHOT_SIGNING_IDENTITY)";
+				CODE_SIGN_STYLE = Manual;
+				CREATE_INFOPLIST_SECTION_IN_BINARY = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.nikoko.ownshot.cli;
+				PRODUCT_MODULE_NAME = SnapzyCLIMain;
+				PRODUCT_NAME = snapzy;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		E061EA00000000000000000A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = OwnShotExtensions/AnnotateShareExtension/AnnotateShareExtension.entitlements;
+				ENABLE_DEBUG_DYLIB = NO;
+				CODE_SIGN_IDENTITY = "$(OWN_SHOT_SIGNING_IDENTITY)";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = OwnShotExtensions/AnnotateShareExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Annotate";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(OWN_SHOT_APP_BUNDLE_IDENTIFIER).AnnotateShareExtension";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+			};
+			name = Debug;
+		};
+		E061EA00000000000000000B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = OwnShotExtensions/AnnotateShareExtension/AnnotateShareExtension.entitlements;
+				ENABLE_DEBUG_DYLIB = NO;
+				CODE_SIGN_IDENTITY = "$(OWN_SHOT_SIGNING_IDENTITY)";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = OwnShotExtensions/AnnotateShareExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Annotate";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(OWN_SHOT_APP_BUNDLE_IDENTIFIER).AnnotateShareExtension";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+			};
+			name = Release;
+		};
+		E061EA000000000000000018 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = OwnShotExtensions/PinShareExtension/PinShareExtension.entitlements;
+				ENABLE_DEBUG_DYLIB = NO;
+				CODE_SIGN_IDENTITY = "$(OWN_SHOT_SIGNING_IDENTITY)";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = OwnShotExtensions/PinShareExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Pin to the Screen";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(OWN_SHOT_APP_BUNDLE_IDENTIFIER).PinShareExtension";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+			};
+			name = Debug;
+		};
+		E061EA000000000000000019 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = OwnShotExtensions/PinShareExtension/PinShareExtension.entitlements;
+				ENABLE_DEBUG_DYLIB = NO;
+				CODE_SIGN_IDENTITY = "$(OWN_SHOT_SIGNING_IDENTITY)";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = OwnShotExtensions/PinShareExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Pin to the Screen";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(OWN_SHOT_APP_BUNDLE_IDENTIFIER).PinShareExtension";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+			};
+			name = Release;
+		};
+		E061EA000000000000000026 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = OwnShotExtensions/QuickLookExtension/QuickLookExtension.entitlements;
+				ENABLE_DEBUG_DYLIB = NO;
+				CODE_SIGN_IDENTITY = "$(OWN_SHOT_SIGNING_IDENTITY)";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = OwnShotExtensions/QuickLookExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "QuickLookExtension";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(OWN_SHOT_APP_BUNDLE_IDENTIFIER).QuickLookExtension";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+			};
+			name = Debug;
+		};
+		E061EA000000000000000027 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = OwnShotExtensions/QuickLookExtension/QuickLookExtension.entitlements;
+				ENABLE_DEBUG_DYLIB = NO;
+				CODE_SIGN_IDENTITY = "$(OWN_SHOT_SIGNING_IDENTITY)";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = OwnShotExtensions/QuickLookExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "QuickLookExtension";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(OWN_SHOT_APP_BUNDLE_IDENTIFIER).QuickLookExtension";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+			};
+			name = Release;
+		};
+		E061EA000000000000000034 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = OwnShotExtensions/QuickLookThumbnailingExtension/QuickLookThumbnailingExtension.entitlements;
+				ENABLE_DEBUG_DYLIB = NO;
+				CODE_SIGN_IDENTITY = "$(OWN_SHOT_SIGNING_IDENTITY)";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = OwnShotExtensions/QuickLookThumbnailingExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "QuickLookThumbnailingExtension";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(OWN_SHOT_APP_BUNDLE_IDENTIFIER).QuickLookThumbnailingExtension";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+			};
+			name = Debug;
+		};
+		E061EA000000000000000035 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = OwnShotExtensions/QuickLookThumbnailingExtension/QuickLookThumbnailingExtension.entitlements;
+				ENABLE_DEBUG_DYLIB = NO;
+				CODE_SIGN_IDENTITY = "$(OWN_SHOT_SIGNING_IDENTITY)";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = OwnShotExtensions/QuickLookThumbnailingExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "QuickLookThumbnailingExtension";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(OWN_SHOT_APP_BUNDLE_IDENTIFIER).QuickLookThumbnailingExtension";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A364629E2F18EEDA0003453D /* Build configuration list for PBXProject "Snapzy" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A36462AE2F18EEDB0003453D /* Debug */,
+				A36462AF2F18EEDB0003453D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A36462B02F18EEDB0003453D /* Build configuration list for PBXNativeTarget "Snapzy" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A36462B12F18EEDB0003453D /* Debug */,
+				A36462B22F18EEDB0003453D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		D001000C2F9F00000000000C /* Build configuration list for PBXNativeTarget "SnapzyTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D001000A2F9F00000000000A /* Debug */,
+				D001000B2F9F00000000000B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		C11CL1012FB0000000CLI017 /* Build configuration list for PBXNativeTarget "SnapzyCLI" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C11CL1012FB0000000CLI019 /* Debug */,
+				C11CL1012FB0000000CLI01A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		E061EA000000000000000009 /* Build configuration list for PBXNativeTarget "AnnotateShareExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E061EA00000000000000000A /* Debug */,
+				E061EA00000000000000000B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		E061EA000000000000000017 /* Build configuration list for PBXNativeTarget "PinShareExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E061EA000000000000000018 /* Debug */,
+				E061EA000000000000000019 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		E061EA000000000000000025 /* Build configuration list for PBXNativeTarget "QuickLookExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E061EA000000000000000026 /* Debug */,
+				E061EA000000000000000027 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		E061EA000000000000000033 /* Build configuration list for PBXNativeTarget "QuickLookThumbnailingExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E061EA000000000000000034 /* Debug */,
+				E061EA000000000000000035 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		C11CL1012FB0000000CLI001 /* XCLocalSwiftPackageReference "Packages/SnapzyCLIKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/SnapzyCLIKit;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		A31BF0A62F1CF69100902D12 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.8.1;
+			};
+		};
+		B42DE19F2FA1B90000WEBP01 /* XCRemoteSwiftPackageReference "Swift-WebP" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/ainame/Swift-WebP.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.6.0;
+			};
+		};
+		C73DB19F2FA3GRDB00GRDB01 /* XCRemoteSwiftPackageReference "GRDB.swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/groue/GRDB.swift.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 7.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		A31BF0A72F1CF69100902D12 /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A31BF0A62F1CF69100902D12 /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
+		};
+		B42DE1A12FA1B90000WEBP01 /* WebP */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B42DE19F2FA1B90000WEBP01 /* XCRemoteSwiftPackageReference "Swift-WebP" */;
+			productName = WebP;
+		};
+		C73DB2A12FA3GRDB00GRDB01 /* GRDB */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C73DB19F2FA3GRDB00GRDB01 /* XCRemoteSwiftPackageReference "GRDB.swift" */;
+			productName = GRDB;
+		};
+		C11CL1012FB0000000CLI002 /* SnapzyCLIProtocol */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C11CL1012FB0000000CLI001 /* XCLocalSwiftPackageReference "Packages/SnapzyCLIKit" */;
+			productName = SnapzyCLIProtocol;
+		};
+		C11CL1012FB0000000CLI015 /* SnapzyCLICore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C11CL1012FB0000000CLI001 /* XCLocalSwiftPackageReference "Packages/SnapzyCLIKit" */;
+			productName = SnapzyCLICore;
+		};
+		C11CL1012FB0000000MSR001 /* SnapzyMeasureCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C11CL1012FB0000000CLI001 /* XCLocalSwiftPackageReference "Packages/SnapzyCLIKit" */;
+			productName = SnapzyMeasureCore;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = A364629B2F18EEDA0003453D /* Project object */;
+}

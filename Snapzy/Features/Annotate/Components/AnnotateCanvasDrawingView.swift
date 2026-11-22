@@ -1,0 +1,3361 @@
+//
+//  AnnotateCanvasDrawingView.swift
+//  Snapzy
+//
+//  NSViewRepresentable wrapper for the drawing canvas
+//
+
+import AppKit
+import Combine
+import CoreImage
+import SnapzyMeasureCore
+import SwiftUI
+
+/// NSViewRepresentable wrapper for the drawing canvas
+struct CanvasDrawingView: NSViewRepresentable {
+  let state: AnnotateState
+  var displayScale: CGFloat = 1.0
+  var canvasBounds: CGRect
+  var acceptsFirstMouse = false
+  var interactionBridge: CanvasInteractionBridge?
+
+  func makeNSView(context _: Context) -> DrawingCanvasNSView {
+    let view = DrawingCanvasNSView(state: state, acceptsFirstMouse: acceptsFirstMouse)
+    view.displayScale = displayScale
+    view.canvasBounds = canvasBounds
+    view.interactionBridge = interactionBridge
+    interactionBridge?.drawingCanvas = view
+    return view
+  }
+
+  func updateNSView(_ nsView: DrawingCanvasNSView, context _: Context) {
+    if nsView.state !== state {
+      nsView.state = state
+    }
+    if abs(nsView.displayScale - displayScale) > 0.0001 {
+      nsView.displayScale = displayScale
+      nsView.invalidateDrawing()
+    }
+    if nsView.canvasBounds != canvasBounds {
+      nsView.canvasBounds = canvasBounds
+      nsView.invalidateDrawing()
+    }
+    nsView.acceptsInactiveWindowMouse = acceptsFirstMouse
+    nsView.interactionBridge = interactionBridge
+    interactionBridge?.drawingCanvas = nsView
+  }
+
+  static func dismantleNSView(_ nsView: DrawingCanvasNSView, coordinator _: ()) {
+    if nsView.interactionBridge?.drawingCanvas === nsView {
+      nsView.interactionBridge?.drawingCanvas = nil
+    }
+    nsView.interactionBridge = nil
+  }
+}
+
+/// Keeps the visual SwiftUI canvas and the AppKit drawing view connected without
+/// changing either view's layout ownership. The drawing view remains fit-sized
+/// for memory-efficient rendering of large captures; a sibling proxy uses this
+/// bridge to route events from the zoomed visual footprint back to it.
+final class CanvasInteractionBridge: ObservableObject {
+  weak var drawingCanvas: DrawingCanvasNSView?
+  weak var textEditor: NSView?
+  /// Кнопка эмодзи над рамкой текста в правке (ANN-043): лежит вне редактора,
+  /// поэтому прокси отдаёт ей нажатия отдельно.
+  weak var textEditorAccessory: NSView?
+
+  // Keep: an explicit deinit is nonisolated. The synthesized one is
+  // MainActor-isolated. On macOS 15.4+ runtimes that predate
+  // swiftlang/swift@29245e4e, the isolated-deinit path aborts ("pointer being
+  // freed was not allocated") when it runs on the main thread outside a task
+  // while a task-local is bound, as XCTest does.
+  deinit {}
+}
+
+/// AppKit hit-testing does not expand an `NSViewRepresentable`'s interactive
+/// frame for SwiftUI's outer `scaleEffect`. This proxy fills the untransformed
+/// viewport and forwards only events whose window point falls inside the
+/// drawing canvas' transformed visual bounds. `DrawingCanvasNSView` then uses
+/// its normal `convert(_:from:)` path, which correctly inverts that transform.
+struct CanvasInteractionProxy: NSViewRepresentable {
+  let bridge: CanvasInteractionBridge
+
+  func makeNSView(context _: Context) -> CanvasInteractionProxyNSView {
+    CanvasInteractionProxyNSView(bridge: bridge)
+  }
+
+  func updateNSView(_ nsView: CanvasInteractionProxyNSView, context _: Context) {
+    nsView.bridge = bridge
+  }
+}
+
+final class CanvasInteractionProxyNSView: NSView {
+  weak var bridge: CanvasInteractionBridge?
+  private var trackingArea: NSTrackingArea?
+  private weak var hoveredView: NSView?
+  private weak var dragTarget: NSView?
+
+  init(bridge: CanvasInteractionBridge) {
+    self.bridge = bridge
+    super.init(frame: .zero)
+  }
+
+  @available(*, unavailable)
+  required init?(coder _: NSCoder) {
+    fatalError("init(coder:) has not been implemented")
+  }
+
+  override func hitTest(_ point: NSPoint) -> NSView? {
+    interactionTarget(at: point) == nil ? nil : self
+  }
+
+  override func updateTrackingAreas() {
+    if let trackingArea {
+      removeTrackingArea(trackingArea)
+    }
+    let trackingArea = NSTrackingArea(
+      rect: .zero,
+      options: [.activeInKeyWindow, .inVisibleRect, .mouseMoved, .mouseEnteredAndExited],
+      owner: self,
+      userInfo: nil
+    )
+    addTrackingArea(trackingArea)
+    self.trackingArea = trackingArea
+    super.updateTrackingAreas()
+  }
+
+  override func mouseDown(with event: NSEvent) {
+    guard let target = interactionTarget(at: convert(event.locationInWindow, from: nil)) else {
+      return
+    }
+    dragTarget = target
+    target.mouseDown(with: event)
+  }
+
+  override func mouseDragged(with event: NSEvent) {
+    dragTarget?.mouseDragged(with: event)
+  }
+
+  override func mouseUp(with event: NSEvent) {
+    defer { dragTarget = nil }
+    dragTarget?.mouseUp(with: event)
+  }
+
+  override func menu(for event: NSEvent) -> NSMenu? {
+    // The proxy becomes the AppKit hit view, but the SwiftUI context menu is
+    // installed on an ancestor. Preserve the normal responder-chain lookup
+    // instead of silently swallowing right-clicks on zoomed canvas content.
+    var ancestor = superview
+    while let view = ancestor {
+      if let menu = view.menu(for: event) {
+        return menu
+      }
+      ancestor = view.superview
+    }
+    return nil
+  }
+
+  override func mouseEntered(with event: NSEvent) {
+    updateHover(for: event)
+  }
+
+  override func mouseMoved(with event: NSEvent) {
+    updateHover(for: event)
+  }
+
+  override func mouseExited(with event: NSEvent) {
+    hoveredView?.mouseExited(with: event)
+    hoveredView = nil
+  }
+
+  private func updateHover(for event: NSEvent) {
+    let target = interactionTarget(at: convert(event.locationInWindow, from: nil))
+    if hoveredView !== target {
+      hoveredView?.mouseExited(with: event)
+      if let target {
+        target.mouseEntered(with: event)
+      }
+      hoveredView = target
+    } else {
+      target?.mouseMoved(with: event)
+    }
+  }
+
+  /// The point is in this untransformed proxy's local coordinate system. Both
+  /// conversions end in the same window coordinate system, including the
+  /// parent SwiftUI scale and pan transforms applied to the drawing canvas.
+  func interactionTarget(at point: NSPoint) -> NSView? {
+    // Native inline text input sits above the canvas and must receive pointer
+    // events first for selection and caret placement. Its transformed AppKit
+    // bounds use the same window-coordinate conversion as the canvas.
+    if let accessory = bridge?.textEditorAccessory,
+       accessory.window === window,
+       !accessory.isHiddenOrHasHiddenAncestor,
+       visualBounds(of: accessory).contains(windowPoint(for: point)) {
+      return accessory
+    }
+    if let textEditor = bridge?.textEditor,
+       textEditor.window === window,
+       visualBounds(of: textEditor).contains(windowPoint(for: point)) {
+      return textEditor
+    }
+
+    guard let canvas = bridge?.drawingCanvas,
+          canvas.window === window else { return nil }
+    return visualBounds(of: canvas).contains(windowPoint(for: point)) ? canvas : nil
+  }
+
+  private func windowPoint(for point: NSPoint) -> NSPoint {
+    convert(point, to: nil)
+  }
+
+  private func visualBounds(of view: NSView) -> NSRect {
+    view.convert(view.bounds, to: nil)
+  }
+}
+
+/// Handle types for resize operations
+enum ResizeHandle: Equatable {
+  case topLeft, topRight, bottomLeft, bottomRight
+  case top, bottom, left, right
+  case lineStart, lineEnd
+  case arrowControl
+  case textCalloutTail
+  case counterArrowTip
+}
+
+/// What a press with a drawing tool (anything but Selection and Crop) does
+/// with the annotation whose visible edge lies under the pointer.
+enum DrawingToolPressIntent: Equatable {
+  /// The press is on an already-selected item's edge: a drag moves the
+  /// selection. A click leaves it as it is, except that the Text tool on a
+  /// selected text annotation enters edit mode (`editTextOnClick`).
+  case moveSelection(anchor: AnnotationItem, editTextOnClick: Bool)
+  /// Click-to-place tools (Text, Counter) select the hit item immediately; a
+  /// drag then moves it. The Text tool on a text annotation enters edit mode
+  /// when the press ends as a click (`editTextOnClick`).
+  case selectNow(item: AnnotationItem, editTextOnClick: Bool)
+  /// Drag tools start drawing as usual; if the gesture ends as a click, the
+  /// candidate is selected instead of committing a drawing.
+  case drawThenMaybeSelect(candidate: AnnotationItem)
+  /// Draw or place a new annotation (no edge hit, or Option held).
+  case draw
+
+  /// Text annotation that a click (a press that never became a drag) edits.
+  var textEditOnClickId: UUID? {
+    switch self {
+    case .moveSelection(let item, true), .selectNow(let item, true):
+      return item.id
+    default:
+      return nil
+    }
+  }
+}
+
+private enum ResizeHandleCoordinateSpace {
+  case image
+  case canvas
+}
+
+/// Transparent drawing layer of the annotate canvas. Renders via `drawBody`
+/// only when invalidated; CoreAnimation composites the existing backing store
+/// otherwise. All mouse/key events fall through to the container view.
+final class CanvasLayerView: NSView {
+  var drawBody: ((NSRect) -> Void)?
+
+  init() {
+    super.init(frame: .zero)
+    wantsLayer = true
+    layer?.backgroundColor = NSColor.clear.cgColor
+  }
+
+  @available(*, unavailable)
+  required init?(coder _: NSCoder) {
+    fatalError("init(coder:) has not been implemented")
+  }
+
+  override func draw(_ dirtyRect: NSRect) {
+    super.draw(dirtyRect)
+    drawBody?(dirtyRect)
+  }
+
+  override func hitTest(_: NSPoint) -> NSView? {
+    nil
+  }
+
+  override var acceptsFirstResponder: Bool {
+    false
+  }
+}
+
+/// NSView subclass handling mouse events and drawing
+final class DrawingCanvasNSView: NSView {
+  private static let drawingCommitDragThreshold: CGFloat = 2
+  /// Measure: pointer travel (screen points) still read as a click that pins a span.
+  private static let measureClickThreshold: CGFloat = 4
+
+  var state: AnnotateState {
+    didSet {
+      guard oldValue !== state else { return }
+      observeStateChanges()
+      invalidateDrawing()
+    }
+  }
+
+  var displayScale: CGFloat = 1.0
+  var canvasBounds: CGRect = .zero
+  var acceptsInactiveWindowMouse: Bool
+  weak var interactionBridge: CanvasInteractionBridge?
+  private let shortcutManager = AnnotateShortcutManager.shared
+  private var currentPath: [CGPoint] = []
+  /// Text-snapped highlighter bars for the in-progress drag. Empty means the
+  /// gesture stays freehand (no text nearby, snapping off, or ⌘ held).
+  private var snappedHighlightSegments: [AnnotateTextSnapSegment] = []
+  private var isDrawing = false
+  private var dragStart: CGPoint?
+  private var drawingRawEndPoint: CGPoint?
+  /// Measure tool: the span under the pointer while hovering (drawn, never committed).
+  private var measureHoverItem: AnnotationItem?
+  private var drawingStartDisplayPoint: CGPoint?
+  private var drawingDragDistance: CGFloat = 0
+  /// The drawing-tool press in progress: set once on mouseDown, cleared once
+  /// when the gesture ends on mouseUp. The Selection tool never sets it.
+  private var drawingToolGesture: DrawingToolGesture?
+  /// Item selected only because it was just drawn (so the quick properties
+  /// bar edits it). Drawing-tool routing ignores that selection, so the next
+  /// stroke may start on the new item; the next press or any selection
+  /// change clears the marker and the selection then counts as the user's.
+  private var autoSelectedAnnotationId: UUID?
+  private var drawingCounterValue: Int?
+  /// Draw с Shift: штрих – прямая от точки нажатия (ANN-128). Сырой путь
+  /// в `currentPath` сохраняется, отпущенный Shift возвращает свободный штрих.
+  private var pencilStraightLineHeld = false
+
+  /// A drawing-tool press: its routing and how far the pointer has moved.
+  private struct DrawingToolGesture {
+    let intent: DrawingToolPressIntent
+    let pressDisplayPoint: CGPoint
+    /// Set once the pointer travels `drawingCommitDragThreshold` screen
+    /// points from the press; from then on the gesture is a drag, never a
+    /// click, even if clamping leaves nothing to move.
+    private(set) var crossedDragThreshold = false
+
+    /// Tracks the pointer (display distance × zoom = screen points). Returns
+    /// true only for the event that first crosses the threshold.
+    @discardableResult
+    mutating func trackPointer(at displayPoint: CGPoint, zoomLevel: CGFloat) -> Bool {
+      guard !crossedDragThreshold else { return false }
+      let screenDistance = hypot(
+        displayPoint.x - pressDisplayPoint.x,
+        displayPoint.y - pressDisplayPoint.y
+      ) * max(zoomLevel, 0.0001)
+      crossedDragThreshold = screenDistance >= DrawingCanvasNSView.drawingCommitDragThreshold
+      return crossedDragThreshold
+    }
+  }
+
+  // Selection and manipulation state
+  private var isDraggingAnnotation = false
+  /// Option при начале перетаскивания: на отпускании создаются копии, оригиналы остаются.
+  private var duplicatesDraggedAnnotations = false
+  private var draggingAnnotationId: UUID? // Local tracking to avoid async race
+  private var draggingAnnotationIds: Set<UUID> = []
+  private var isResizingAnnotation = false
+  private var resizingAnnotationId: UUID? // Local tracking to avoid async race
+  private var activeResizeHandle: ResizeHandle?
+  private var dragOffset: CGPoint = .zero
+  private var originalBounds: CGRect = .zero
+  private var originalBoundsByAnnotationId: [UUID: CGRect] = [:]
+  private var isSelectingArea = false
+  private var selectionAreaStart: CGPoint?
+  private var selectionAreaCurrent: CGPoint?
+
+  // Crop interaction state
+  private var isCropDragging = false
+  private var isCropResizing = false
+  private var activeCropHandle: CropHandle?
+  private var originalCropRect: CGRect = .zero
+  // Drag-to-draw a new crop rect (Shottr style). The rect only replaces the
+  // current crop once the pointer travels past `cropDrawActivationDistance`,
+  // so a plain click never collapses the crop.
+  private var isCropDrawing = false
+  private var cropDrawAnchor: CGPoint = .zero
+
+  // Cut out strip drawing gesture (shares the crop activation threshold).
+  private var isCutOutDrawing = false
+  private var cutOutDrawDidMove = false
+  private var cutOutDrawAnchor: CGPoint = .zero
+  private var cutOutDrawStartDisplayPoint: CGPoint = .zero
+  private var cropDrawStartDisplayPoint: CGPoint = .zero
+  private var cropDrawDidMove = false
+  private let cropDrawActivationDistance: CGFloat = 4
+
+  // Blur cache manager for performance optimization
+  private let blurCacheManager = BlurCacheManager()
+  private var lastSourceImageIdentifier: ObjectIdentifier?
+
+  // Gesture-local manipulation state. Drag/resize gestures mutate these plain
+  // copies instead of @Published state, so SwiftUI is not invalidated per mouse
+  // event; final values are committed to state once on mouseUp.
+  private var gestureOriginalItems: [UUID: AnnotationItem] = [:]
+  private var gestureLocalItems: [UUID: AnnotationItem] = [:]
+  private var gestureLastResizeBounds: CGRect?
+  private var gestureLastPoint: CGPoint?
+  private var gestureDidMutate = false
+  private var gestureUndoCheckpointed = false
+
+  // Layered canvas composition: stacked child views let CoreAnimation composite
+  // unchanged content straight from their backing stores (a layer-backed view
+  // only redraws when invalidated), so per-frame cost stays flat without any
+  // manual bitmap or color-space management — rendering always goes through the
+  // standard AppKit pipeline in the window's own color space.
+  // Order (back → front): overlay → highlight → selection-underlay → static-below
+  // → dragged → static-above → preview → selection-chrome.
+  private let overlayLayerView = CanvasLayerView()
+  /// Штрихи Highlighter под остальными аннотациями. Полупрозрачность задаёт рендерер
+  /// (α 0,3, как в экспорте). Раньше слой нёс compositingFilter multiply, но без
+  /// layerUsesCoreImageFilters AppKit фильтр не применяет, а multiply по пустому слою –
+  /// это сам цвет: штрих выходил непрозрачным поверх снимка.
+  private let highlightLayerView = CanvasLayerView()
+  private let selectionUnderlayLayerView = CanvasLayerView()
+  private let staticBelowLayerView = CanvasLayerView()
+  private let draggedLayerView = CanvasLayerView()
+  private let staticAboveLayerView = CanvasLayerView()
+  private let previewLayerView = CanvasLayerView()
+  private let selectionChromeLayerView = CanvasLayerView()
+
+  private var layerViews: [CanvasLayerView] {
+    [
+      overlayLayerView,
+      highlightLayerView,
+      selectionUnderlayLayerView,
+      staticBelowLayerView,
+      draggedLayerView,
+      staticAboveLayerView,
+      previewLayerView,
+      selectionChromeLayerView,
+    ]
+  }
+
+  /// Views redrawn per frame while a gesture runs (cheap content only).
+  private var liveLayerViews: [CanvasLayerView] {
+    [overlayLayerView, highlightLayerView, selectionUnderlayLayerView, draggedLayerView, previewLayerView,
+     selectionChromeLayerView]
+  }
+
+  private var stateObservers = Set<AnyCancellable>()
+  /// flagsChanged reaches only the first responder; this local monitor keeps
+  /// the Option hover cursor current while focus is elsewhere in the window.
+  private var flagsChangedMonitor: Any?
+
+  init(state: AnnotateState, acceptsFirstMouse: Bool = false) {
+    self.state = state
+    self.acceptsInactiveWindowMouse = acceptsFirstMouse
+    super.init(frame: .zero)
+    setupView()
+    observeStateChanges()
+    blurCacheManager.onRenderCompleted = { [weak self] _, imageBounds in
+      self?.invalidateDisplay(forImageRect: imageBounds)
+    }
+  }
+
+  @available(*, unavailable)
+  required init?(coder _: NSCoder) {
+    fatalError("init(coder:) has not been implemented")
+  }
+
+  deinit {
+    if let flagsChangedMonitor {
+      NSEvent.removeMonitor(flagsChangedMonitor)
+    }
+  }
+
+  override func viewDidMoveToWindow() {
+    super.viewDidMoveToWindow()
+    if let flagsChangedMonitor {
+      NSEvent.removeMonitor(flagsChangedMonitor)
+      self.flagsChangedMonitor = nil
+    }
+    guard window != nil else { return }
+    flagsChangedMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
+      // As first responder the canvas gets flagsChanged itself.
+      if let self, event.window === window, window?.firstResponder !== self {
+        refreshHoverCursorForModifierChange(event)
+      }
+      return event
+    }
+  }
+
+  override func setFrameSize(_ newSize: NSSize) {
+    super.setFrameSize(newSize)
+    // Resized layers keep scaled stale content until redrawn (.onSetNeedsDisplay).
+    invalidateDrawing()
+  }
+
+  private func setupView() {
+    wantsLayer = true
+    layer?.backgroundColor = NSColor.clear.cgColor
+
+    for layerView in layerViews {
+      layerView.autoresizingMask = [.width, .height]
+      layerView.frame = bounds
+      addSubview(layerView)
+    }
+    overlayLayerView.drawBody = { [weak self] dirtyRect in self?.drawSpotlightOverlay(dirtyRect: dirtyRect) }
+    highlightLayerView.drawBody = { [weak self] dirtyRect in self?.drawHighlights(dirtyRect: dirtyRect) }
+    selectionUnderlayLayerView.drawBody = { [weak self] dirtyRect in self?.drawSelectionUnderlays(dirtyRect: dirtyRect) }
+    staticBelowLayerView.drawBody = { [weak self] dirtyRect in self?.drawStaticBelow(dirtyRect: dirtyRect) }
+    draggedLayerView.drawBody = { [weak self] dirtyRect in self?.drawDraggedItems(dirtyRect: dirtyRect) }
+    staticAboveLayerView.drawBody = { [weak self] dirtyRect in self?.drawStaticAbove(dirtyRect: dirtyRect) }
+    previewLayerView.drawBody = { [weak self] dirtyRect in self?.drawGesturePreview(dirtyRect: dirtyRect) }
+    selectionChromeLayerView.drawBody = { [weak self] dirtyRect in self?.drawSelectionChrome(dirtyRect: dirtyRect) }
+
+    // Enable mouse tracking for cursor updates
+    let trackingArea = NSTrackingArea(
+      rect: .zero,
+      options: [.activeInKeyWindow, .inVisibleRect, .mouseMoved, .mouseEnteredAndExited],
+      owner: self,
+      userInfo: nil
+    )
+    addTrackingArea(trackingArea)
+  }
+
+  private func observeStateChanges() {
+    stateObservers.removeAll()
+    NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)
+      .receive(on: RunLoop.main)
+      .sink { [weak self] _ in self?.invalidateDrawing() }
+      .store(in: &stateObservers)
+    // Content-driving publishers: redraw every layer.
+    state.$annotations
+      .sink { [weak self] _ in self?.scheduleAnnotationsInvalidation() }
+      .store(in: &stateObservers)
+    state.$selectedAnnotationIds
+      .sink { [weak self] _ in self?.invalidateSelectionChrome() }
+      .store(in: &stateObservers)
+    // Any selection change after an auto-select (an explicit click, select
+    // all, undo, …) makes the selection the user's own.
+    state.$selectedAnnotationIds
+      .sink { [weak self] _ in self?.autoSelectedAnnotationId = nil }
+      .store(in: &stateObservers)
+    state.$selectedAnnotationId
+      .sink { [weak self] _ in self?.invalidateSelectionChrome() }
+      .store(in: &stateObservers)
+    state.$editingTextAnnotationId
+      .sink { [weak self] _ in self?.invalidateDrawing() }
+      .store(in: &stateObservers)
+    state.$embeddedImageAssets
+      .sink { [weak self] _ in self?.invalidateDrawing() }
+      .store(in: &stateObservers)
+    state.$sourceImage
+      .sink { [weak self] _ in self?.invalidateDrawing() }
+      .store(in: &stateObservers)
+    state.$cutoutImage
+      .sink { [weak self] _ in self?.invalidateDrawing() }
+      .store(in: &stateObservers)
+
+    // Everything else (crop flags, spotlight opacity, zoom/pan, ...) only needs
+    // the cheap live layers; static annotation content is unaffected.
+    state.objectWillChange
+      .sink { [weak self] _ in self?.scheduleLiveLayerInvalidation() }
+      .store(in: &stateObservers)
+  }
+
+  /// Redraw all layers (content changed).
+  func invalidateDrawing() {
+    for layerView in layerViews {
+      layerView.needsDisplay = true
+    }
+  }
+
+  /// Redraw only the per-frame layers (overlay/dragged/preview) — the static
+  /// layers keep compositing their existing backing store.
+  private func invalidateLiveLayers() {
+    // When the manipulated items can't be split into the dragged layer (a
+    // multi-select drag), their gesture-local copies live in the static layers,
+    // so everything must redraw per frame for the gesture to be visible.
+    if (isDraggingAnnotation || isResizingAnnotation), !usesDragLayerSplit {
+      invalidateDrawing()
+      return
+    }
+    for layerView in liveLayerViews {
+      layerView.needsDisplay = true
+    }
+  }
+
+  /// Redraw only the editor-only selection layers. This keeps zooming smooth by
+  /// retaining the static annotation backing stores.
+  private func invalidateSelectionChrome() {
+    selectionUnderlayLayerView.needsDisplay = true
+    selectionChromeLayerView.needsDisplay = true
+  }
+
+  private func invalidateDisplay(forImageRect imageRect: CGRect) {
+    let imagePadding = max(12, 24 / max(displayScale, 0.0001))
+    let dirtyRect = imageToDisplay(imageRect.insetBy(dx: -imagePadding, dy: -imagePadding)).intersection(bounds)
+    for layerView in layerViews {
+      if dirtyRect.isNull || dirtyRect.isEmpty {
+        layerView.needsDisplay = true
+      } else {
+        layerView.setNeedsDisplay(dirtyRect)
+      }
+    }
+  }
+
+  private var isLiveInvalidationScheduled = false
+
+  private func scheduleLiveLayerInvalidation() {
+    guard !isLiveInvalidationScheduled else { return }
+    isLiveInvalidationScheduled = true
+
+    DispatchQueue.main.async { [weak self] in
+      guard let self else { return }
+      isLiveInvalidationScheduled = false
+      invalidateLiveLayers()
+    }
+  }
+
+  private var isAnnotationsInvalidationScheduled = false
+
+  /// Coalesce bursts of annotation mutations (e.g. property slider drags) into
+  /// one redraw per runloop. Property-only edits redraw just the edited
+  /// annotations' dirty rects instead of every layer in full bounds (issue #335).
+  private func scheduleAnnotationsInvalidation() {
+    guard !isAnnotationsInvalidationScheduled else { return }
+    isAnnotationsInvalidationScheduled = true
+
+    DispatchQueue.main.async { [weak self] in
+      guard let self else { return }
+      isAnnotationsInvalidationScheduled = false
+      let pending = state.consumePendingCanvasInvalidation()
+      if pending.needsFullRedraw || pending.rects.isEmpty {
+        invalidateDrawing()
+      } else {
+        for rect in pending.rects {
+          invalidateDisplay(forImageRect: rect)
+        }
+      }
+    }
+  }
+
+  // MARK: - First Responder
+
+  override var acceptsFirstResponder: Bool {
+    true
+  }
+
+  override func acceptsFirstMouse(for _: NSEvent?) -> Bool {
+    acceptsInactiveWindowMouse
+  }
+
+  override func keyDown(with event: NSEvent) {
+    let shift = event.modifierFlags.contains(.shift)
+    let nudgeAmount: CGFloat = shift ? 10 : 1
+
+    switch event.keyCode {
+    case 51, 117: // Delete, Forward Delete
+      if state.hasSelectedAnnotations, state.editingTextAnnotationId == nil {
+        Task { @MainActor in
+          state.deleteSelectedAnnotation()
+        }
+        invalidateDrawing()
+      }
+
+    case 53: // Escape
+      // Cancel cut out first — mode tools share the shared bottom slot one at a time.
+      if state.isCutOutInteractionActive {
+        Task { @MainActor in
+          state.cancelCutOutInteraction()
+        }
+        invalidateDrawing()
+        return
+      }
+      // Cancel crop if active
+      if state.isCropInteractionActive {
+        Task { @MainActor in
+          state.cancelCrop()
+        }
+        invalidateDrawing()
+        return
+      }
+      Task { @MainActor in
+        state.deselectAnnotation()
+      }
+      invalidateDrawing()
+
+    case 36: // Enter - confirm crop / commit cut out
+      if state.isCutOutInteractionActive, state.cutOutPreviewStrip != nil {
+        Task { @MainActor in
+          state.commitCutOut()
+        }
+        invalidateDrawing()
+        return
+      }
+      if state.isCropInteractionActive {
+        Task { @MainActor in
+          state.confirmCropInteraction()
+        }
+        invalidateDrawing()
+        return
+      }
+
+    case 126: // Arrow Up
+      if state.hasSelectedAnnotations, state.editingTextAnnotationId == nil {
+        Task { @MainActor in
+          state.nudgeSelectedAnnotation(dx: 0, dy: nudgeAmount)
+        }
+        invalidateDrawing()
+      }
+
+    case 125: // Arrow Down
+      if state.hasSelectedAnnotations, state.editingTextAnnotationId == nil {
+        Task { @MainActor in
+          state.nudgeSelectedAnnotation(dx: 0, dy: -nudgeAmount)
+        }
+        invalidateDrawing()
+      }
+
+    case 123: // Arrow Left
+      if state.hasSelectedAnnotations, state.editingTextAnnotationId == nil {
+        Task { @MainActor in
+          state.nudgeSelectedAnnotation(dx: -nudgeAmount, dy: 0)
+        }
+        invalidateDrawing()
+      }
+
+    case 124: // Arrow Right
+      if state.hasSelectedAnnotations, state.editingTextAnnotationId == nil {
+        Task { @MainActor in
+          state.nudgeSelectedAnnotation(dx: nudgeAmount, dy: 0)
+        }
+        invalidateDrawing()
+      }
+
+    case 6: // Z key - Undo/Redo
+      if event.modifierFlags.contains(.command) {
+        Task { @MainActor in
+          if event.modifierFlags.contains(.shift) {
+            state.redo()
+          } else {
+            state.undo()
+          }
+        }
+        invalidateDrawing()
+      }
+
+    default:
+      // Crop mode owns `A` (auto-crop to content) even if the user bound it to
+      // a tool — same precedence as Enter/Esc while cropping.
+      if state.isCropInteractionActive, !event.modifierFlags.contains(.command),
+         event.characters?.lowercased().first == "a" {
+        Task { @MainActor in
+          await state.autoCropToContent()
+        }
+        invalidateDrawing()
+        return
+      }
+      if event.modifierFlags.intersection([.command, .control, .option]).isEmpty,
+         event.characters?.lowercased() == "b", shortcutManager.tool(for: "b") == nil,
+         shortcutManager.toggleSidebarShortcut == AnnotateShortcutManager.defaultToggleSidebar {
+        state.showSidebar = true
+        return
+      }
+      // Tool shortcuts — use configured shortcuts from AnnotateShortcutManager
+      if !event.modifierFlags.contains(.command),
+         let char = event.characters?.lowercased().first,
+         let matchedTool = shortcutManager.tool(for: char) {
+        Task { @MainActor in
+          if matchedTool == .crop {
+            state.beginCropInteraction()
+          } else if matchedTool == .cutOut {
+            state.beginCutOutInteraction()
+          } else {
+            // Commit any active text edit before switching
+            if state.editingTextAnnotationId != nil {
+              state.commitTextEditing()
+            }
+            // Deselect active annotation when switching tools
+            state.deselectAnnotation()
+            state.activateTool(matchedTool)
+          }
+        }
+        invalidateDrawing()
+      } else {
+        super.keyDown(with: event)
+      }
+    }
+  }
+
+  // MARK: - Hit Testing
+
+  /// Annotation hit regions are kept in a stable screen-space size. Annotation
+  /// geometry is stored in image coordinates, while the canvas is rendered
+  /// through both the fit scale and the enclosing zoom transform. Using the
+  /// model's historical image-space tolerance directly therefore makes line,
+  /// arrow, path, highlight, callout-tail, and counter hit regions grow with
+  /// zoom (or become unusably small for a scaled-to-fit image).
+  private var annotationHitToleranceInImagePoints: CGFloat {
+    selectionChromeMetrics.imageLength(forScreenPoints: 6)
+  }
+
+  /// Find annotation at given point (in image coordinates), topmost first
+  private func hitTestAnnotation(at point: CGPoint) -> AnnotationItem? {
+    let hitTolerance = annotationHitToleranceInImagePoints
+    for annotation in state.annotations.renderOrdered.reversed() {
+      // Quick bounds check first (optimization)
+      let expandedBounds = annotation.renderBounds.insetBy(dx: -hitTolerance, dy: -hitTolerance)
+      guard expandedBounds.contains(point) else { continue }
+
+      // Precise hit test. Незалитые Rectangle и Ellipse берутся только за
+      // контур, как у эталона (ANN-014): пустая середина не хватает объект.
+      if annotation.moveHitContains(point, baseTolerance: hitTolerance) {
+        return annotation
+      }
+    }
+    return nil
+  }
+
+  /// Topmost annotation whose visible edge band contains the point (image
+  /// coordinates). Drawing tools use this narrower hit so a press inside a
+  /// shape keeps drawing; the Selection tool keeps `hitTestAnnotation`. An
+  /// opaque body (filled rectangle, blur, combined image) hides the items
+  /// beneath it, so a press inside one finds nothing.
+  private func hitTestAnnotationEdge(at point: CGPoint) -> AnnotationItem? {
+    let hitTolerance = annotationHitToleranceInImagePoints
+    for annotation in state.annotations.renderOrdered.reversed() {
+      let expandedBounds = annotation.renderBounds.insetBy(dx: -hitTolerance, dy: -hitTolerance)
+      guard expandedBounds.contains(point) else { continue }
+
+      if annotation.edgeBandContains(point, baseTolerance: hitTolerance) {
+        return annotation
+      }
+      if annotation.occludesItemsBelow(at: point, baseTolerance: hitTolerance) {
+        return nil
+      }
+    }
+    return nil
+  }
+
+  /// Edge hit for drawing-tool presses and hover, from the unclamped pointer.
+  /// Presses are clamped onto the canvas for drawing, but one in the margin
+  /// outside it must not reach an annotation lying on the canvas border.
+  private func drawingToolEdgeHit(atDisplayPoint displayPoint: CGPoint) -> AnnotationItem? {
+    let rawImagePoint = displayToImage(displayPoint)
+    let drawingBounds = activeDrawingBounds
+    guard rawImagePoint.x >= drawingBounds.minX, rawImagePoint.x <= drawingBounds.maxX,
+          rawImagePoint.y >= drawingBounds.minY, rawImagePoint.y <= drawingBounds.maxY else {
+      return nil
+    }
+    return hitTestAnnotationEdge(at: rawImagePoint)
+  }
+
+  /// Selection that drawing-tool routing honours: an item selected only
+  /// because it was just drawn does not count (`autoSelectedAnnotationId`).
+  private var userSelectedAnnotationIds: Set<UUID> {
+    let selectedIds = state.selectedAnnotationIds
+    if let autoSelectedAnnotationId, selectedIds == [autoSelectedAnnotationId] {
+      return []
+    }
+    return selectedIds
+  }
+
+  private func hitTestHandle(
+    at point: CGPoint,
+    for annotation: AnnotationItem,
+    in coordinateSpace: ResizeHandleCoordinateSpace
+  ) -> ResizeHandle? {
+    for (handle, rect) in resizeHandleRects(for: annotation, in: coordinateSpace) {
+      if rect.contains(point) {
+        return handle
+      }
+    }
+    return nil
+  }
+
+  private func resizeHandleRects(
+    for annotation: AnnotationItem,
+    in coordinateSpace: ResizeHandleCoordinateSpace
+  ) -> [(ResizeHandle, CGRect)] {
+    switch annotation.type {
+    case .line(let start, let end):
+      let startPoint = coordinateSpace == .canvas ? imageToDisplay(start) : start
+      let endPoint = coordinateSpace == .canvas ? imageToDisplay(end) : end
+      return [
+        (.lineStart, handleRect(at: startPoint, in: coordinateSpace, screenSize: AnnotateSelectionChromeMetrics.endpointHandleSize)),
+        (.lineEnd, handleRect(at: endPoint, in: coordinateSpace, screenSize: AnnotateSelectionChromeMetrics.endpointHandleSize)),
+      ]
+
+    case .text:
+      // Ручки текста эталона (ANN-801): круглые по бокам меняют ширину,
+      // квадратик в правом нижнем углу – кегль.
+      let bounds = coordinateSpace == .canvas ? imageToDisplay(annotation.resizeBounds) : annotation.resizeBounds
+      var handles: [(ResizeHandle, CGRect)] = AnnotateTextFrameGeometry.handleCenters(for: bounds).map { handle, center in
+        switch handle {
+        case .leftWidth:
+          (.left, handleRect(at: center, in: coordinateSpace, screenSize: AnnotateSelectionChromeMetrics.endpointHandleSize))
+        case .rightWidth:
+          (.right, handleRect(at: center, in: coordinateSpace, screenSize: AnnotateSelectionChromeMetrics.endpointHandleSize))
+        case .scale:
+          (.bottomRight, handleRect(at: center, in: coordinateSpace, screenSize: AnnotateSelectionChromeMetrics.textScaleHandleSize))
+        }
+      }
+      if annotation.properties.textPresentation == .callout,
+         let tailTarget = annotation.properties.calloutTailTarget {
+        let point = coordinateSpace == .canvas ? imageToDisplay(tailTarget) : tailTarget
+        handles.append((.textCalloutTail, handleRect(at: point, in: coordinateSpace)))
+      }
+      return handles
+
+    case .arrow(let geometry):
+      // Curved arrows expose their Bezier control point before the endpoints so
+      // it remains reachable even when a user places it close to an endpoint.
+      let startPoint = coordinateSpace == .canvas ? imageToDisplay(geometry.start) : geometry.start
+      let endPoint = coordinateSpace == .canvas ? imageToDisplay(geometry.end) : geometry.end
+      var handles: [(ResizeHandle, CGRect)] = []
+      if geometry.style != .straight,
+         let controlPoint = geometry.resolvedControlPoint {
+        let point = coordinateSpace == .canvas ? imageToDisplay(controlPoint) : controlPoint
+        handles.append((.arrowControl, handleRect(at: point, in: coordinateSpace)))
+      }
+      handles.append(contentsOf: [
+        (.lineStart, handleRect(at: startPoint, in: coordinateSpace, screenSize: AnnotateSelectionChromeMetrics.endpointHandleSize)),
+        (.lineEnd, handleRect(at: endPoint, in: coordinateSpace, screenSize: AnnotateSelectionChromeMetrics.endpointHandleSize)),
+      ])
+      return handles
+
+    default:
+      let bounds = coordinateSpace == .canvas ? imageToDisplay(annotation.resizeBounds) : annotation.resizeBounds
+      var handles: [(ResizeHandle, CGRect)] = []
+      if case .counter = annotation.type, let geometry = annotation.counterArrowGeometry {
+        let point = coordinateSpace == .canvas ? imageToDisplay(geometry.end) : geometry.end
+        handles.append((.counterArrowTip, handleRect(at: point, in: coordinateSpace)))
+      }
+      guard annotation.type.showsCornerResizeHandles else { return handles }
+      handles.append(contentsOf: [
+        (.topLeft, handleRect(at: CGPoint(x: bounds.minX, y: bounds.maxY), in: coordinateSpace)),
+        (.topRight, handleRect(at: CGPoint(x: bounds.maxX, y: bounds.maxY), in: coordinateSpace)),
+        (.bottomLeft, handleRect(at: CGPoint(x: bounds.minX, y: bounds.minY), in: coordinateSpace)),
+        (.bottomRight, handleRect(at: CGPoint(x: bounds.maxX, y: bounds.minY), in: coordinateSpace)),
+      ])
+      return handles
+    }
+  }
+
+  private func handleRect(
+    at center: CGPoint,
+    in coordinateSpace: ResizeHandleCoordinateSpace,
+    screenSize: CGFloat = AnnotateSelectionChromeMetrics.handleSize
+  ) -> CGRect {
+    let size: CGFloat
+    switch coordinateSpace {
+    case .image:
+      size = selectionChromeMetrics.imageLength(forScreenPoints: screenSize)
+    case .canvas:
+      size = selectionChromeMetrics.canvasLength(forScreenPoints: screenSize)
+    }
+    return CGRect(
+      x: center.x - size / 2,
+      y: center.y - size / 2,
+      width: size,
+      height: size
+    )
+  }
+
+  // MARK: - Coordinate Transformation
+
+  /// Convert display point to image coordinates (for storage)
+  private func displayToImage(_ point: CGPoint) -> CGPoint {
+    guard displayScale > 0 else { return point }
+    return CGPoint(
+      x: point.x / displayScale + effectiveCanvasBounds.minX,
+      y: point.y / displayScale + effectiveCanvasBounds.minY
+    )
+  }
+
+  /// Convert image point to display coordinates (for rendering)
+  private func imageToDisplay(_ point: CGPoint) -> CGPoint {
+    CGPoint(
+      x: (point.x - effectiveCanvasBounds.minX) * displayScale,
+      y: (point.y - effectiveCanvasBounds.minY) * displayScale
+    )
+  }
+
+  /// Convert image rect to display coordinates
+  private func imageToDisplay(_ rect: CGRect) -> CGRect {
+    CGRect(
+      x: (rect.origin.x - effectiveCanvasBounds.minX) * displayScale,
+      y: (rect.origin.y - effectiveCanvasBounds.minY) * displayScale,
+      width: rect.width * displayScale,
+      height: rect.height * displayScale
+    )
+  }
+
+  /// Convert display rect to image coordinates
+  private func displayToImage(_ rect: CGRect) -> CGRect {
+    guard displayScale > 0 else { return rect }
+    return CGRect(
+      x: rect.origin.x / displayScale + effectiveCanvasBounds.minX,
+      y: rect.origin.y / displayScale + effectiveCanvasBounds.minY,
+      width: rect.width / displayScale,
+      height: rect.height / displayScale
+    )
+  }
+
+  private var effectiveCanvasBounds: CGRect {
+    guard canvasBounds.width > 0, canvasBounds.height > 0 else {
+      return state.sourceImageBounds
+    }
+    return canvasBounds.standardized
+  }
+
+  private var selectionChromeMetrics: AnnotateSelectionChromeMetrics {
+    AnnotateSelectionChromeMetrics(fitScale: displayScale, zoomScale: state.zoomLevel)
+  }
+
+  private var activeDrawingBounds: CGRect {
+    state.isCombineMode
+      ? state.effectiveContentBounds.standardized
+      : state.activeAnnotationBounds.standardized
+  }
+
+  private var drawingConstraintBounds: CGRect {
+    if state.expandsCanvasBeyondImage && state.cropRect == nil && !state.isCombineMode {
+      return CGRect(x: -1_000_000, y: -1_000_000, width: 2_000_000, height: 2_000_000)
+    }
+    return activeDrawingBounds
+  }
+
+  /// Clamp point to the active drawing bounds. Applied expanded crops become drawable canvas.
+  private func clampToCanvasBounds(_ point: CGPoint) -> CGPoint {
+    if state.expandsCanvasBeyondImage && state.cropRect == nil && !state.isCombineMode { return point }
+    let bounds = activeDrawingBounds
+    return CGPoint(
+      x: max(bounds.minX, min(point.x, bounds.maxX)),
+      y: max(bounds.minY, min(point.y, bounds.maxY))
+    )
+  }
+
+  private func interactionPoint(from displayPoint: CGPoint) -> CGPoint {
+    let rawImagePoint = displayToImage(displayPoint)
+    guard state.selectedTool != .crop else { return rawImagePoint }
+    return clampToCanvasBounds(rawImagePoint)
+  }
+
+  // MARK: - Mouse Events
+
+  override func mouseDown(with event: NSEvent) {
+    window?.makeFirstResponder(self)
+    if state.isCombineMode {
+      state.frozenCombineContentBounds = state.combineContentBounds
+    }
+    let displayPoint = convert(event.locationInWindow, from: nil)
+    updateCanvasMouseLocation(for: displayPoint)
+    let imagePoint = interactionPoint(from: displayPoint)
+    dragStart = imagePoint // Store in image coords
+    // The just-drawn marker lasts until the next press: read the selection
+    // drawing-tool routing honours first, then drop the marker.
+    let routingSelectedIds = userSelectedAnnotationIds
+    autoSelectedAnnotationId = nil
+    drawingToolGesture = nil
+
+    // Handle double-click on text annotations to enter edit mode
+    if event.clickCount == 2 {
+      if let annotation = hitTestAnnotation(at: imagePoint),
+         case .text = annotation.type {
+        Task { @MainActor in
+          state.selectedAnnotationId = annotation.id
+          state.beginTextEditing(id: annotation.id)
+        }
+        invalidateDrawing()
+        return
+      }
+    }
+
+    // Commit text editing when clicking elsewhere — just blur, don't create new
+    if state.editingTextAnnotationId != nil {
+      Task { @MainActor in
+        state.commitTextEditing()
+        state.selectedAnnotationId = nil
+      }
+      invalidateDrawing()
+      return
+    }
+
+    // Check if clicking on a selected annotation's handle (use display coords
+    // for handles). Option always draws with a drawing tool (D-3), even on a
+    // handle, so a new stroke can start exactly at an endpoint.
+    if !Self.drawingToolOptionDraws(tool: state.selectedTool, optionHeld: event.modifierFlags.contains(.option)),
+       let selectedId = state.selectedAnnotationId,
+       let annotation = state.annotations.first(where: { $0.id == selectedId }),
+       annotation.supportsResize,
+       canResizeAnnotation(annotation) {
+      if let handle = hitTestHandle(at: displayPoint, for: annotation, in: .canvas) {
+        isResizingAnnotation = true
+        resizingAnnotationId = selectedId
+        activeResizeHandle = handle
+        originalBounds = annotation.resizeBounds // Store in image coords
+        gestureOriginalItems = [selectedId: annotation]
+        gestureLocalItems = [selectedId: annotation]
+        gestureLastResizeBounds = nil
+        gestureLastPoint = nil
+        gestureDidMutate = false
+        gestureUndoCheckpointed = false
+        // Re-render static layers once so the resized item is excluded from
+        // their backing stores before the live (dragged) layer takes over —
+        // otherwise the pre-gesture bitmap lingers and ghosts during resize.
+        invalidateDrawing()
+        return
+      }
+    }
+
+    // Handle crop tool
+    if state.selectedTool == .crop {
+      handleCropMouseDown(at: imagePoint, displayPoint: displayPoint)
+      return
+    }
+
+    // Handle cut out tool — start a new strip (drawn strip is full-crossing).
+    if state.selectedTool == .cutOut {
+      state.collapseSidebarForCropInteraction()
+      isCutOutDrawing = true
+      cutOutDrawDidMove = false
+      cutOutDrawAnchor = imagePoint
+      cutOutDrawStartDisplayPoint = displayPoint
+      invalidateDrawing()
+      return
+    }
+
+    // Selection uses image coordinates
+    if state.selectedTool == .selection {
+      if let annotation = hitTestAnnotation(at: imagePoint) {
+        if !state.isAnnotationSelected(annotation.id) {
+          // The annotation has already been hit-tested with the canvas' fit ×
+          // zoom tolerance above. Re-running the model-only hit test here used
+          // a fixed image-space tolerance and could select a different result
+          // than the one under the pointer at high zoom.
+          state.setSelectedAnnotationIds([annotation.id])
+        }
+        beginAnnotationDrag(anchor: annotation, at: imagePoint, optionHeld: event.modifierFlags.contains(.option))
+        return
+      } else {
+        beginAreaSelection(at: imagePoint)
+        invalidateDrawing()
+        return
+      }
+    }
+
+    // Drawing tools: a press on an existing annotation's visible edge selects
+    // (or moves an already-selected) item; presses anywhere else, including
+    // inside a shape, keep drawing (#535). Selection changes here must be
+    // synchronous so mouseDragged/mouseUp see them.
+    let pressIntent = Self.drawingToolPressIntent(
+      tool: state.selectedTool,
+      edgeHit: drawingToolEdgeHit(atDisplayPoint: displayPoint),
+      selectedIds: routingSelectedIds,
+      optionHeld: event.modifierFlags.contains(.option)
+    )
+    drawingToolGesture = DrawingToolGesture(intent: pressIntent, pressDisplayPoint: displayPoint)
+    switch pressIntent {
+    case .moveSelection(let item, _), .selectNow(let item, _):
+      if case .selectNow = pressIntent {
+        // Text and Counter never drag to create, so the same press may move
+        // the freshly selected item in one step; a click on text edits it.
+        state.setSelectedAnnotationIds([item.id])
+      }
+      beginAnnotationDrag(anchor: item, at: imagePoint, optionHeld: event.modifierFlags.contains(.option))
+      return
+    case .drawThenMaybeSelect:
+      // Keep the current selection while the press may still be a click that
+      // selects the candidate; it is blurred once the press becomes a drawing.
+      break
+    case .draw:
+      // Blank-canvas clicks should blur the active item while leaving the
+      // current drawing tool active, matching toolbar reactivation semantics.
+      state.deselectAnnotation()
+    }
+
+    // Start drawing for other tools (in image coordinates)
+    isDrawing = true
+    measureHoverItem = nil
+    drawingStartDisplayPoint = displayPoint
+    drawingDragDistance = 0
+    drawingCounterValue = state.selectedTool == .counter ? state.nextCounterValue() : nil
+    switch state.selectedTool {
+    case .pencil, .highlighter:
+      currentPath = [imagePoint]
+      snappedHighlightSegments = []
+    case .text:
+      // Only create new text annotation when not already editing one
+      // (if we were editing, commitTextEditing() above already handled it)
+      Task { @MainActor in
+        state.saveState()
+        createTextAnnotation(at: imagePoint)
+      }
+      resetDrawingInteraction()
+    default:
+      drawingRawEndPoint = imagePoint
+    }
+  }
+
+  /// Option held with a drawing tool always draws, ahead of resize handles
+  /// and edge hits (D-3). Selection and Crop keep their own handling.
+  static func drawingToolOptionDraws(tool: AnnotationToolType, optionHeld: Bool) -> Bool {
+    optionHeld && tool != .selection && tool != .crop
+  }
+
+  /// Pure press routing for drawing tools. `edgeHit` is the topmost item whose
+  /// edge band contains the press. Selection and Crop are routed before this
+  /// is consulted and always map to `.draw` here. Combined images are canvas
+  /// content for drawing tools and never claim a press (#377).
+  static func drawingToolPressIntent(
+    tool: AnnotationToolType,
+    edgeHit: AnnotationItem?,
+    selectedIds: Set<UUID>,
+    optionHeld: Bool
+  ) -> DrawingToolPressIntent {
+    switch tool {
+    case .selection, .crop:
+      return .draw
+    default:
+      break
+    }
+    // Option always draws, so a stroke can start exactly on another edge.
+    guard !optionHeld, let edgeHit else { return .draw }
+    if case .embeddedImage = edgeHit.type { return .draw }
+    let isTextHit: Bool = {
+      if case .text = edgeHit.type { return true }
+      return false
+    }()
+
+    if selectedIds.contains(edgeHit.id) {
+      return .moveSelection(
+        anchor: edgeHit,
+        editTextOnClick: tool == .text && isTextHit
+      )
+    }
+
+    switch tool {
+    case .text:
+      return .selectNow(item: edgeHit, editTextOnClick: isTextHit)
+    case .counter:
+      return .selectNow(item: edgeHit, editTextOnClick: false)
+    default:
+      return .drawThenMaybeSelect(candidate: edgeHit)
+    }
+  }
+
+  private func beginAnnotationDrag(anchor annotation: AnnotationItem, at imagePoint: CGPoint, optionHeld: Bool) {
+    if state.isCombineMode, state.combineMode == .autoStitch,
+       case .embeddedImage = annotation.type {
+      state.setSelectedAnnotationIds([annotation.id])
+      invalidateDrawing()
+      return
+    }
+
+    let activeIds: Set<UUID> = if state.isAnnotationSelected(annotation.id), !state.selectedAnnotationIds.isEmpty {
+      state.selectedAnnotationIds
+    } else {
+      [annotation.id]
+    }
+
+    isDraggingAnnotation = true
+    draggingAnnotationId = annotation.id
+    draggingAnnotationIds = activeIds
+    duplicatesDraggedAnnotations = optionHeld
+    let anchorBounds = annotation.resizeBounds
+    dragOffset = CGPoint(
+      x: imagePoint.x - anchorBounds.origin.x,
+      y: imagePoint.y - anchorBounds.origin.y
+    )
+    originalBounds = anchorBounds
+    let draggedItems = state.annotations.filter { activeIds.contains($0.id) }
+    originalBoundsByAnnotationId = Dictionary(
+      uniqueKeysWithValues: draggedItems.map { ($0.id, $0.resizeBounds) }
+    )
+    gestureOriginalItems = Dictionary(uniqueKeysWithValues: draggedItems.map { ($0.id, $0) })
+    gestureLocalItems = gestureOriginalItems
+    gestureLastResizeBounds = nil
+    gestureLastPoint = nil
+    gestureDidMutate = false
+    // Копию запишет в undo сам duplicateAnnotations, перемещение оригиналов undo не пишет.
+    gestureUndoCheckpointed = duplicatesDraggedAnnotations
+    NSCursor.closedHand.set()
+    invalidateDrawing()
+  }
+
+  private func canResizeAnnotation(_ annotation: AnnotationItem) -> Bool {
+    guard state.isCombineMode, state.combineMode == .autoStitch else { return true }
+    if case .embeddedImage = annotation.type { return false }
+    return true
+  }
+
+  private func beginAreaSelection(at imagePoint: CGPoint) {
+    state.deselectAnnotation()
+    isSelectingArea = true
+    selectionAreaStart = imagePoint
+    selectionAreaCurrent = imagePoint
+    NSCursor.crosshair.set()
+  }
+
+  private func finishAreaSelection() {
+    defer {
+      isSelectingArea = false
+      selectionAreaStart = nil
+      selectionAreaCurrent = nil
+    }
+
+    guard let start = selectionAreaStart,
+          let current = selectionAreaCurrent else {
+      state.deselectAnnotation()
+      return
+    }
+
+    let selectionRect = CGRect(
+      x: min(start.x, current.x),
+      y: min(start.y, current.y),
+      width: abs(current.x - start.x),
+      height: abs(current.y - start.y)
+    )
+
+    guard selectionRect.width >= 3 || selectionRect.height >= 3 else {
+      state.deselectAnnotation()
+      return
+    }
+
+    state.selectAnnotations(in: selectionRect)
+    // Selection owns the interaction for the whole selection lifecycle. The
+    // selected annotation type is already available to quick properties, so
+    // do not switch the active tool away from Selection after a marquee.
+    state.selectedTool = .selection
+  }
+
+  override func mouseDragged(with event: NSEvent) {
+    let displayPoint = convert(event.locationInWindow, from: nil)
+    updateCanvasMouseLocation(for: displayPoint)
+    let imagePoint = interactionPoint(from: displayPoint)
+
+    // Handle resizing (in image coordinates). Mutates only the gesture-local
+    // copy; the final geometry commits to state once on mouseUp.
+    if isResizingAnnotation, let handle = activeResizeHandle,
+       let resizeId = resizingAnnotationId {
+      applyGestureResize(handle: handle, resizeId: resizeId, imagePoint: imagePoint, event: event)
+      invalidateLiveLayers()
+      return
+    }
+
+    // Handle crop resizing
+    if isCropResizing, let handle = activeCropHandle {
+      let shiftHeld = event.modifierFlags.contains(.shift)
+      let commandHeld = event.modifierFlags.contains(.command)
+      handleCropResize(handle: handle, currentPoint: imagePoint, shiftHeld: shiftHeld, commandHeld: commandHeld)
+      Task { @MainActor in
+        state.isCropResizing = true
+        state.isCropShiftLocked = shiftHeld
+      }
+      invalidateLiveLayers()
+      return
+    }
+
+    // Handle crop dragging
+    if isCropDragging {
+      handleCropDrag(to: imagePoint)
+      invalidateLiveLayers()
+      return
+    }
+
+    // Handle drawing a new crop rect
+    if isCropDrawing {
+      if !cropDrawDidMove {
+        let distance = hypot(
+          displayPoint.x - cropDrawStartDisplayPoint.x,
+          displayPoint.y - cropDrawStartDisplayPoint.y
+        )
+        guard distance >= cropDrawActivationDistance else { return }
+        cropDrawDidMove = true
+      }
+      let shiftHeld = event.modifierFlags.contains(.shift)
+      let commandHeld = event.modifierFlags.contains(.command)
+      handleCropDraw(to: imagePoint, shiftHeld: shiftHeld, commandHeld: commandHeld)
+      Task { @MainActor in
+        state.isCropResizing = true
+        state.isCropShiftLocked = shiftHeld
+      }
+      invalidateLiveLayers()
+      return
+    }
+
+    // Handle drawing a cut out strip (full-crossing via image bounds)
+    if isCutOutDrawing {
+      if !cutOutDrawDidMove {
+        let distance = hypot(
+          displayPoint.x - cutOutDrawStartDisplayPoint.x,
+          displayPoint.y - cutOutDrawStartDisplayPoint.y
+        )
+        guard distance >= cropDrawActivationDistance else { return }
+        cutOutDrawDidMove = true
+      }
+      let dragRect = CropDragSelection.rect(
+        anchor: cutOutDrawAnchor,
+        current: imagePoint,
+        bounds: state.sourceImageBounds,
+        aspectRatio: nil
+      )
+      let strip = AnnotateCutOutTransform.fullCrossingStrip(
+        from: dragRect,
+        orientation: state.cutOutOrientation,
+        imageBounds: state.sourceImageBounds
+      )
+      Task { @MainActor in
+        state.updateCutOutStrip(strip)
+      }
+      invalidateLiveLayers()
+      return
+    }
+
+    if isSelectingArea {
+      selectionAreaCurrent = imagePoint
+      invalidateLiveLayers()
+      return
+    }
+
+    // Handle dragging annotation (in image coordinates). Mutates only
+    // gesture-local copies; final bounds commit to state once on mouseUp.
+    if isDraggingAnnotation {
+      let activeIds = draggingAnnotationIds.isEmpty
+        ? Set(draggingAnnotationId.map { [$0] } ?? [])
+        : draggingAnnotationIds
+      guard let start = dragStart, !activeIds.isEmpty else { return }
+      // Drawing-tool drags stay a click until the pointer passes the commit
+      // threshold (display distance × zoom = screen points), so a jittery
+      // click neither moves the item nor records an undo step. Once passed,
+      // the item follows the full pointer delta from the press.
+      if drawingToolGesture != nil {
+        drawingToolGesture?.trackPointer(at: displayPoint, zoomLevel: state.zoomLevel)
+        guard drawingToolGesture?.crossedDragThreshold == true else { return }
+      }
+      // Shift фиксирует перемещение по одной оси, как у эталона.
+      let delta = AnnotationDragConstraint.axisLockedDelta(
+        dx: imagePoint.x - start.x,
+        dy: imagePoint.y - start.y,
+        shiftHeld: event.modifierFlags.contains(.shift)
+      )
+      let dx = delta.width
+      let dy = delta.height
+
+      for id in activeIds {
+        guard let originalBounds = originalBoundsByAnnotationId[id],
+              let original = gestureOriginalItems[id] else { continue }
+        let newBounds = CGRect(
+          origin: CGPoint(
+            x: originalBounds.origin.x + dx,
+            y: originalBounds.origin.y + dy
+          ),
+          size: originalBounds.size
+        )
+        gestureLocalItems[id] = original.applyingResizeBounds(newBounds)
+      }
+
+      // Combine free-canvas snapping resolves against the gesture-local copy
+      // so the gesture stays state-free until mouseUp commits.
+      if state.isCombineMode,
+         state.combineMode == .freeCanvas,
+         activeIds.count == 1,
+         let draggedID = activeIds.first,
+         let dragged = gestureLocalItems[draggedID],
+         case .embeddedImage = dragged.type {
+        let candidates = [state.sourceImageBounds] + state.annotations.compactMap { annotation -> CGRect? in
+          guard annotation.id != draggedID, case .embeddedImage = annotation.type else { return nil }
+          return annotation.bounds
+        }
+        if let snapped = CombineSnapping.resolve(
+          draggedBounds: dragged.bounds,
+          candidateBounds: candidates,
+          gap: state.combineGap,
+          tolerance: state.combineSnapTolerance
+        ) {
+          gestureLocalItems[draggedID] = dragged.applyingResizeBounds(snapped)
+        }
+      }
+      for id in activeIds {
+        guard let original = gestureOriginalItems[id],
+              let updated = gestureLocalItems[id] else { continue }
+        noteGestureMutation(original: original, updated: updated)
+      }
+      invalidateLiveLayers()
+      return
+    }
+
+    // Handle drawing (in image coordinates)
+    guard isDrawing else { return }
+
+    if let startDisplayPoint = drawingStartDisplayPoint {
+      let distance = hypot(
+        displayPoint.x - startDisplayPoint.x,
+        displayPoint.y - startDisplayPoint.y
+      )
+      drawingDragDistance = max(drawingDragDistance, distance)
+    }
+    // A press on an unselected edge kept the selection while it could still
+    // be a click; now that it is a drawing, blur the selection as usual.
+    if case .drawThenMaybeSelect? = drawingToolGesture?.intent,
+       drawingToolGesture?.trackPointer(at: displayPoint, zoomLevel: state.zoomLevel) == true {
+      state.deselectAnnotation()
+    }
+
+    switch state.selectedTool {
+    case .highlighter:
+      currentPath.append(imagePoint)
+      snappedHighlightSegments = resolveHighlightSnap(current: imagePoint, event: event)
+      invalidateLiveLayers()
+    case .pencil:
+      currentPath.append(imagePoint)
+      pencilStraightLineHeld = event.modifierFlags.contains(.shift)
+      invalidateLiveLayers()
+    default:
+      drawingRawEndPoint = imagePoint
+      updateConstrainedDrawingPreview(shiftHeld: event.modifierFlags.contains(.shift))
+    }
+  }
+
+  override func flagsChanged(with event: NSEvent) {
+    if isResizingAnnotation, activeResizeHandle == .counterArrowTip,
+       let resizeId = resizingAnnotationId, let point = gestureLastPoint {
+      applyGestureResize(handle: .counterArrowTip, resizeId: resizeId, imagePoint: point, event: event)
+      invalidateLiveLayers()
+      return
+    }
+    guard isDrawing, dragStart != nil, drawingRawEndPoint != nil || state.selectedTool == .pencil else {
+      super.flagsChanged(with: event)
+      refreshHoverCursorForModifierChange(event)
+      return
+    }
+    switch state.selectedTool {
+    case .pencil:
+      pencilStraightLineHeld = event.modifierFlags.contains(.shift)
+      invalidateLiveLayers()
+    case .highlighter:
+      super.flagsChanged(with: event)
+    default:
+      updateConstrainedDrawingPreview(shiftHeld: event.modifierFlags.contains(.shift))
+    }
+  }
+
+  private func updateConstrainedDrawingPreview(shiftHeld: Bool) {
+    guard let dragStart, let drawingRawEndPoint else { return }
+    let constrainedEndPoint = AnnotationDragConstraint.constrainedEndPoint(
+      tool: state.selectedTool,
+      arrowStyle: state.arrowStyle,
+      start: dragStart,
+      end: drawingRawEndPoint,
+      shiftHeld: shiftHeld,
+      bounds: drawingConstraintBounds
+    )
+    currentPath = [constrainedEndPoint]
+    invalidateLiveLayers()
+  }
+
+  /// Resolve the in-progress highlighter drag against the detected text lines.
+  /// Returns an empty array whenever the gesture should stay freehand: snapping
+  /// disabled, ⌘ held (temporary bypass), profile not ready, or no text near
+  /// the drag.
+  private func resolveHighlightSnap(current: CGPoint, event: NSEvent) -> [AnnotateTextSnapSegment] {
+    guard state.isHighlighterTextSnappingEnabled,
+          !event.modifierFlags.contains(.command),
+          let profile = state.textLineProfile,
+          !profile.isEmpty,
+          let start = dragStart else { return [] }
+
+    return AnnotateTextSnapping.resolve(
+      start: start,
+      current: current,
+      path: currentPath,
+      profile: profile,
+      pointerTolerance: pointerToleranceInImagePoints
+    )
+  }
+
+  /// ~8 screen px expressed in image points. The canvas renders one image point
+  /// as `displayScale` view px and the enclosing ZStack applies
+  /// `.scaleEffect(state.zoomLevel)` outside this view, so screen px per image
+  /// point is their product (mirrors the crop snapping tolerance).
+  private var pointerToleranceInImagePoints: CGFloat {
+    8 / max(displayScale * state.zoomLevel, 0.0001)
+  }
+
+  /// Applies a resize gesture to the gesture-local copy only. Mirrors the
+  /// state update methods (`updateArrowEndpoint`, `updateLineEndpoint`,
+  /// `updateTextCalloutTail`, `updateAnnotationBounds`) so the commit on
+  /// mouseUp produces the exact same final geometry.
+  private func applyGestureResize(handle: ResizeHandle, resizeId: UUID, imagePoint: CGPoint, event: NSEvent) {
+    guard let original = gestureOriginalItems[resizeId] else { return }
+    gestureLastPoint = imagePoint
+
+    switch handle {
+    case .lineStart, .lineEnd:
+      var item = original
+      let isStart = handle == .lineStart
+      switch item.type {
+      case .arrow:
+        // Как в эталоне, ручка изгиба сдвигается на каждом шаге от текущего
+        // положения: после отпускания Shift она продолжает идти от середины.
+        let current = gestureLocalItems[resizeId] ?? original
+        guard case .arrow(let geometry) = current.type else { return }
+        let updated = geometry.withEndpoints(
+          start: isStart ? imagePoint : geometry.start,
+          end: isStart ? geometry.end : imagePoint,
+          shiftHeld: event.modifierFlags.contains(.shift)
+        )
+        item.type = .arrow(updated)
+        item.bounds = updated.bounds()
+      case .line(let start, let end):
+        let updatedStart = isStart ? imagePoint : start
+        let updatedEnd = isStart ? end : imagePoint
+        item.type = .line(start: updatedStart, end: updatedEnd)
+        item.bounds = CGRect(
+          x: min(updatedStart.x, updatedEnd.x),
+          y: min(updatedStart.y, updatedEnd.y),
+          width: abs(updatedEnd.x - updatedStart.x),
+          height: abs(updatedEnd.y - updatedStart.y)
+        ).standardized
+      default:
+        return
+      }
+      gestureLocalItems[resizeId] = item
+      noteGestureMutation(original: original, updated: item)
+
+    case .arrowControl:
+      var item = original
+      guard case .arrow(let geometry) = item.type,
+            geometry.style != .straight else { return }
+      let updated = geometry.withControlPoint(imagePoint)
+      item.type = .arrow(updated)
+      item.bounds = updated.bounds()
+      gestureLocalItems[resizeId] = item
+      noteGestureMutation(original: original, updated: item)
+
+    case .counterArrowTip:
+      var item = original
+      guard case .counter = item.type else { return }
+      let target = AnnotationDragConstraint.constrainedEndPoint(
+        tool: .counter,
+        arrowStyle: .straight,
+        start: CGPoint(x: original.bounds.midX, y: original.bounds.midY),
+        end: imagePoint,
+        shiftHeld: event.modifierFlags.contains(.shift),
+        bounds: drawingConstraintBounds
+      )
+      item.properties.counterArrowTarget = item.normalizedCounterArrowTarget(target)
+      gestureLocalItems[resizeId] = item
+      noteGestureMutation(original: original, updated: item)
+
+    case .textCalloutTail:
+      var item = original
+      guard case .text = item.type,
+            item.properties.textPresentation == .callout else { return }
+      item.properties.calloutTailTarget = TextBubbleGeometry.resolvedTailTarget(
+        in: item.bounds,
+        requestedTarget: imagePoint,
+        fontSize: item.properties.fontSize
+      )
+      gestureLocalItems[resizeId] = item
+      noteGestureMutation(original: original, updated: item)
+
+    case _ where Self.textFrameHandle(for: handle, item: original) != nil:
+      // Ручки текста (ANN-801): боковые меняют ширину с переносом строк,
+      // угловая – кегль. Undo – один шаг на жест (noteGestureMutation).
+      guard let textHandle = Self.textFrameHandle(for: handle, item: original),
+            let item = AnnotateTextFrameGeometry.resizedTextItem(
+              original,
+              original: originalBounds,
+              handle: textHandle,
+              pointer: imagePoint
+            ) else { return }
+      gestureLocalItems[resizeId] = item
+      noteGestureMutation(original: original, updated: item)
+
+    default:
+      let isEmbeddedImage: Bool = {
+        if case .embeddedImage = original.type { return true }
+        return false
+      }()
+      let proportional = event.modifierFlags.contains(.shift)
+        || (state.isCombineMode && isEmbeddedImage)
+      let newBounds = calculateResizedBounds(
+        handle: handle,
+        currentPoint: imagePoint,
+        proportional: proportional
+      )
+      gestureLastResizeBounds = newBounds
+      let updated = original.applyingResizeBounds(newBounds)
+      gestureLocalItems[resizeId] = updated
+      noteGestureMutation(original: original, updated: updated)
+    }
+  }
+
+  /// Ручка рамки текста для ручки холста; nil – не текст или чужая ручка.
+  static func textFrameHandle(for handle: ResizeHandle, item: AnnotationItem) -> AnnotateTextFrameGeometry.Handle? {
+    guard case .text = item.type else { return nil }
+    switch handle {
+    case .left: return .leftWidth
+    case .right: return .rightWidth
+    case .bottomRight: return .scale
+    default: return nil
+    }
+  }
+
+  private func noteGestureMutation(original: AnnotationItem, updated: AnnotationItem) {
+    guard original.type != updated.type
+      || original.bounds != updated.bounds
+      || original.properties != updated.properties else { return }
+    if !gestureUndoCheckpointed {
+      state.saveState()
+      gestureUndoCheckpointed = true
+    }
+    gestureDidMutate = true
+  }
+
+  override func mouseUp(with event: NSEvent) {
+    if state.isCombineMode {
+      state.frozenCombineContentBounds = nil
+    }
+    let displayPoint = convert(event.locationInWindow, from: nil)
+    let imagePoint = interactionPoint(from: displayPoint)
+    drawingToolGesture?.trackPointer(at: displayPoint, zoomLevel: state.zoomLevel)
+    let gesture = drawingToolGesture
+    defer { drawingToolGesture = nil }
+
+    // Consume the release position/modifiers for counter tips before committing.
+    if isResizingAnnotation, activeResizeHandle == .counterArrowTip,
+       let resizeId = resizingAnnotationId, gestureLastPoint != nil {
+      applyGestureResize(handle: .counterArrowTip, resizeId: resizeId, imagePoint: imagePoint, event: event)
+    }
+
+    // Finish resizing
+    if isResizingAnnotation {
+      // Invalidate blur cache if resizing a blur annotation
+      if let resizeId = resizingAnnotationId,
+         let annotation = state.annotations.first(where: { $0.id == resizeId }),
+         case .blur = annotation.type {
+        blurCacheManager.invalidate(id: resizeId)
+      }
+      // Commit the gesture-local result synchronously so the very next draw
+      // shows the new geometry — a deferred Task would paint one stale frame
+      // at the old bounds first (visible as old/new flicker on drop).
+      if gestureDidMutate, let resizeId = resizingAnnotationId, let handle = activeResizeHandle {
+        let isArrow: Bool = {
+          guard let item = gestureLocalItems[resizeId] ?? gestureOriginalItems[resizeId] else { return false }
+          if case .arrow = item.type { return true }
+          return false
+        }()
+        switch handle {
+        case .lineStart, .lineEnd:
+          if isArrow {
+            if let item = gestureLocalItems[resizeId], case .arrow(let geometry) = item.type {
+              state.commitArrowGeometry(id: resizeId, geometry: geometry)
+            }
+          } else if let lastPoint = gestureLastPoint {
+            if handle == .lineStart {
+              state.updateLineEndpoint(id: resizeId, start: lastPoint)
+            } else {
+              state.updateLineEndpoint(id: resizeId, end: lastPoint)
+            }
+          }
+        case .arrowControl:
+          if let lastPoint = gestureLastPoint {
+            state.updateArrowControlPoint(id: resizeId, controlPoint: lastPoint)
+          }
+        case .counterArrowTip:
+          if let item = gestureLocalItems[resizeId] {
+            state.updateCounterArrowTarget(id: resizeId, target: item.properties.counterArrowTarget)
+          }
+        case .textCalloutTail:
+          if let lastPoint = gestureLastPoint {
+            state.updateTextCalloutTail(id: resizeId, target: lastPoint)
+          }
+        default:
+          if let original = gestureOriginalItems[resizeId],
+             Self.textFrameHandle(for: handle, item: original) != nil {
+            if let item = gestureLocalItems[resizeId] {
+              state.commitTextHandleResize(id: resizeId, resized: item)
+            }
+          } else if let lastBounds = gestureLastResizeBounds {
+            state.updateAnnotationBounds(id: resizeId, bounds: lastBounds)
+          }
+        }
+      }
+      isResizingAnnotation = false
+      resizingAnnotationId = nil
+      activeResizeHandle = nil
+      clearGestureState()
+      invalidateDrawing()
+      return
+    }
+
+    // Finish crop resizing, dragging or drawing
+    if isCropResizing || isCropDragging || isCropDrawing {
+      isCropResizing = false
+      isCropDragging = false
+      isCropDrawing = false
+      cropDrawDidMove = false
+      activeCropHandle = nil
+      Task { @MainActor in
+        state.isCropResizing = false
+        state.isCropShiftLocked = false
+      }
+      invalidateDrawing()
+      return
+    }
+
+    // Finish cut out strip drawing — the strip stays committed in state until
+    // the user commits via Enter / toolbar Button, or redraws it.
+    if isCutOutDrawing {
+      isCutOutDrawing = false
+      cutOutDrawDidMove = false
+      invalidateDrawing()
+      return
+    }
+
+    if isSelectingArea {
+      finishAreaSelection()
+      clearGestureState()
+      updateCursor(for: event)
+      invalidateDrawing()
+      return
+    }
+
+    // Finish dragging
+    if isDraggingAnnotation {
+      let activeIds = draggingAnnotationIds.isEmpty
+        ? Set(draggingAnnotationId.map { [$0] } ?? [])
+        : draggingAnnotationIds
+      for id in activeIds {
+        if let annotation = state.annotations.first(where: { $0.id == id }),
+           case .blur = annotation.type {
+          blurCacheManager.invalidate(id: id)
+        }
+      }
+      // Commit gesture-local bounds once, synchronously, so the next draw is
+      // already at the final position (deferred commit caused old/new flicker).
+      if gestureDidMutate, duplicatesDraggedAnnotations {
+        let anchorId = draggingAnnotationId ?? activeIds.first
+        if let anchorId, let local = gestureLocalItems[anchorId], let original = gestureOriginalItems[anchorId] {
+          let offset = CGSize(
+            width: local.resizeBounds.minX - original.resizeBounds.minX,
+            height: local.resizeBounds.minY - original.resizeBounds.minY
+          )
+          state.duplicateAnnotations(ids: activeIds, offset: offset)
+        }
+      } else if gestureDidMutate {
+        for id in activeIds {
+          guard let local = gestureLocalItems[id] else { continue }
+          state.updateAnnotationBounds(id: id, bounds: local.resizeBounds)
+        }
+      } else if let gesture, !gesture.crossedDragThreshold,
+                let textId = gesture.intent.textEditOnClickId,
+                state.annotations.contains(where: { $0.id == textId }) {
+        // Text tool click on a text: edit it. A drag that moved nothing (it
+        // was clamped at the canvas border) is still a drag. The text may have
+        // been deleted while the button was held, hence the existence check.
+        state.setSelectedAnnotationIds([textId])
+        state.beginTextEditing(id: textId)
+      }
+      isDraggingAnnotation = false
+      duplicatesDraggedAnnotations = false
+      draggingAnnotationId = nil
+      draggingAnnotationIds = []
+      originalBoundsByAnnotationId = [:]
+      clearGestureState()
+      updateCursor(for: event)
+      invalidateDrawing()
+      return
+    }
+
+    // Finish drawing (already in image coords)
+    guard isDrawing, let start = dragStart else { return }
+
+    if state.selectedTool == .counter {
+      drawingRawEndPoint = imagePoint
+      updateConstrainedDrawingPreview(shiftHeld: event.modifierFlags.contains(.shift))
+    }
+
+    // Capture path before clearing to avoid race condition
+    let tool = state.selectedTool
+    if tool == .pencil {
+      pencilStraightLineHeld = event.modifierFlags.contains(.shift)
+    }
+    let pathToSave = tool == .pencil ? pencilCommitPath(start: start) : currentPath
+    let endPoint: CGPoint
+    switch tool {
+    case .pencil, .highlighter:
+      endPoint = imagePoint
+    default:
+      endPoint = pathToSave.last ?? imagePoint
+    }
+
+    // A click (under the commit threshold) that started on an existing item's
+    // edge selects that item instead of committing a drawing. This runs before
+    // highlighter snapping so a click near text never emits a snapped bar, and
+    // it also keeps a jittery Pencil/Highlighter click from leaving a dot.
+    if case .drawThenMaybeSelect(let candidate)? = gesture?.intent {
+      if maxDrawingDistance(from: start, to: endPoint, path: pathToSave) < Self.drawingCommitDragThreshold {
+        state.setSelectedAnnotationIds([candidate.id])
+        resetDrawingInteraction()
+        updateCursor(for: event)
+        invalidateDrawing()
+        return
+      }
+      // A drawing after all: blur the selection the press kept, if the drag
+      // threshold did not already.
+      if state.hasSelectedAnnotations {
+        state.deselectAnnotation()
+      }
+    }
+
+    // Text-snapped highlights commit the snapped bars instead of the raw path,
+    // so the result matches the preview the user released on.
+    if tool == .highlighter {
+      let segments = resolveHighlightSnap(current: imagePoint, event: event)
+      if !segments.isEmpty {
+        createSnappedHighlights(segments)
+        resetDrawingInteraction()
+        invalidateDrawing()
+        return
+      }
+    }
+
+    if tool == .measure {
+      let isClick = maxDrawingDistance(from: start, to: endPoint, path: pathToSave) < Self.measureClickThreshold
+      commitMeasurement(from: start, to: endPoint, isClick: isClick, keepsRawBox: event.modifierFlags.contains(.command))
+      resetDrawingInteraction()
+      invalidateDrawing()
+      return
+    }
+
+    if shouldCommitDrawing(tool: tool, start: start, end: endPoint, path: pathToSave) {
+      // Commit synchronously: deferring to a Task lets a frame render where the
+      // stroke preview is already gone but the annotation is not yet appended,
+      // which reads as a flicker on completion.
+      createAnnotation(tool: tool, from: start, to: endPoint, path: pathToSave,
+        optionHeld: event.modifierFlags.contains(.option))
+    }
+
+    resetDrawingInteraction()
+    invalidateDrawing()
+  }
+
+  private func calculateResizedBounds(
+    handle: ResizeHandle,
+    currentPoint: CGPoint,
+    proportional: Bool = false
+  ) -> CGRect {
+    let minSize: CGFloat = 20
+    var newBounds = originalBounds
+
+    switch handle {
+    case .topLeft:
+      let clampedX = min(currentPoint.x, originalBounds.maxX - minSize)
+      let clampedY = max(currentPoint.y, originalBounds.minY + minSize)
+      newBounds.origin.x = clampedX
+      newBounds.size.width = originalBounds.maxX - clampedX
+      newBounds.size.height = clampedY - originalBounds.minY
+    case .topRight:
+      let clampedX = max(currentPoint.x, originalBounds.minX + minSize)
+      let clampedY = max(currentPoint.y, originalBounds.minY + minSize)
+      newBounds.size.width = clampedX - originalBounds.minX
+      newBounds.size.height = clampedY - originalBounds.minY
+    case .bottomLeft:
+      let clampedX = min(currentPoint.x, originalBounds.maxX - minSize)
+      let clampedY = min(currentPoint.y, originalBounds.maxY - minSize)
+      newBounds.origin.x = clampedX
+      newBounds.origin.y = clampedY
+      newBounds.size.width = originalBounds.maxX - clampedX
+      newBounds.size.height = originalBounds.maxY - clampedY
+    case .bottomRight:
+      let clampedX = max(currentPoint.x, originalBounds.minX + minSize)
+      let clampedY = min(currentPoint.y, originalBounds.maxY - minSize)
+      newBounds.origin.y = clampedY
+      newBounds.size.width = clampedX - originalBounds.minX
+      newBounds.size.height = originalBounds.maxY - clampedY
+    case .lineStart, .lineEnd:
+      break
+    default:
+      break
+    }
+
+    guard proportional, originalBounds.width > 0, originalBounds.height > 0 else {
+      return newBounds
+    }
+
+    let aspectRatio = originalBounds.width / originalBounds.height
+    if newBounds.width / max(newBounds.height, 1) > aspectRatio {
+      newBounds.size.width = newBounds.height * aspectRatio
+    } else {
+      newBounds.size.height = newBounds.width / aspectRatio
+    }
+
+    switch handle {
+    case .topLeft:
+      newBounds.origin.x = originalBounds.maxX - newBounds.width
+      newBounds.origin.y = originalBounds.minY
+    case .topRight:
+      newBounds.origin.x = originalBounds.minX
+      newBounds.origin.y = originalBounds.minY
+    case .bottomLeft:
+      newBounds.origin.x = originalBounds.maxX - newBounds.width
+      newBounds.origin.y = originalBounds.maxY - newBounds.height
+    case .bottomRight:
+      newBounds.origin.x = originalBounds.minX
+      newBounds.origin.y = originalBounds.maxY - newBounds.height
+    default:
+      break
+    }
+    return newBounds.standardized
+  }
+
+  // MARK: - Annotation Creation
+
+  private func shouldCommitDrawing(
+    tool: AnnotationToolType,
+    start: CGPoint,
+    end: CGPoint,
+    path: [CGPoint]
+  ) -> Bool {
+    guard tool.requiresDragToCreateAnnotation else { return true }
+    let constrainedPoints = path + [end]
+    guard constrainedPoints.contains(where: { point in
+      hypot(point.x - start.x, point.y - start.y) > 0
+    }) else { return false }
+    return maxDrawingDistance(from: start, to: end, path: path) >= Self.drawingCommitDragThreshold
+  }
+
+  private func maxDrawingDistance(from start: CGPoint, to end: CGPoint, path: [CGPoint]) -> CGFloat {
+    let points = path + [end]
+    // NSEvent locations converted into this view are in the pre-zoom canvas
+    // coordinate space because the outer SwiftUI scale transform is inverted
+    // during hit testing. Convert both the freehand display distance and the
+    // image-space path distance back to physical screen points before applying
+    // the commit threshold.
+    let zoomScale = max(state.zoomLevel, 0.0001)
+    let scale = max(displayScale * zoomScale, 0.0001)
+    let displayDistance = drawingDragDistance * zoomScale
+    let imageDistance = points.reduce(CGFloat.zero) { maxDistance, point in
+      let distance = hypot(point.x - start.x, point.y - start.y) * scale
+      return max(maxDistance, distance)
+    }
+    return max(displayDistance, imageDistance)
+  }
+
+  private func resetDrawingInteraction() {
+    isDrawing = false
+    dragStart = nil
+    drawingRawEndPoint = nil
+    drawingStartDisplayPoint = nil
+    drawingDragDistance = 0
+    currentPath = []
+    drawingCounterValue = nil
+    pencilStraightLineHeld = false
+    snappedHighlightSegments = []
+    clearGestureState()
+  }
+
+  /// Путь Draw для сохранения: прямая при Shift, иначе сырой путь
+  /// (сглаживание применяет фабрика по настройке Smooth drawing).
+  private func pencilCommitPath(start: CGPoint) -> [CGPoint] {
+    guard pencilStraightLineHeld, let end = currentPath.last else { return currentPath }
+    return AnnotationFactory.straightDrawPath(from: start, to: end)
+  }
+
+  /// Путь Draw для живого превью: тот же, что попадёт в объект.
+  private func pencilPreviewPath(start: CGPoint) -> [CGPoint] {
+    let path = pencilCommitPath(start: start)
+    guard !pencilStraightLineHeld, state.annotatePreferences.smoothDrawing else { return path }
+    return AnnotationFactory.smoothedDrawPath(path)
+  }
+
+  /// Drops gesture-local copies. Called when any gesture ends so the next
+  /// gesture starts from pristine state.
+  private func clearGestureState() {
+    gestureOriginalItems = [:]
+    gestureLocalItems = [:]
+    gestureLastResizeBounds = nil
+    gestureLastPoint = nil
+    gestureDidMutate = false
+    gestureUndoCheckpointed = false
+  }
+
+  @MainActor
+  private func createAnnotation(tool: AnnotationToolType, from start: CGPoint, to end: CGPoint, path: [CGPoint],
+    optionHeld: Bool) {
+    let item = AnnotationFactory.createAnnotation(
+      tool: tool,
+      from: start,
+      to: end,
+      path: path,
+      state: state,
+      counterArrowMinimumDragDistance: counterArrowMinimumDragDistance,
+      optionHeld: optionHeld
+    )
+    if let item {
+      state.saveState()
+      state.annotations.append(item)
+      if Self.selectsCreatedAnnotation(tool: tool) {
+        state.selectedAnnotationId = item.id
+        // After the selection publish above, which clears the marker.
+        autoSelectedAnnotationId = item.id
+      } else {
+        state.deselectAnnotation()
+      }
+    }
+  }
+
+  /// Остаётся ли объект выделенным сразу после рисования. Эталон после
+  /// Rectangle, Filled, Ellipse, Line, Arrow, Redact, Draw, Highlighter и других
+  /// инструментов рисования объект не выделяет: панель свойств показывает
+  /// настройки инструмента, а «-», «=» и Delete ничего не трогают
+  /// (ANN-018/023/028/033/038/048/063). Counter (выносная стрелка – расширение
+  /// OwnShot) и Watermark (расширение OwnShot) сохраняют прежнее автовыделение;
+  /// Text создаётся своим путём и сразу входит в правку.
+  static func selectsCreatedAnnotation(tool: AnnotationToolType) -> Bool {
+    switch tool {
+    case .counter, .watermark:
+      return true
+    default:
+      return false
+    }
+  }
+
+  /// A fixed screen distance avoids accidental arrows at high zoom.
+  private var counterArrowMinimumDragDistance: CGFloat {
+    4 / max(displayScale * state.zoomLevel, 0.0001)
+  }
+
+  /// Commit text-snapped highlighter bars. A drag across several lines produces
+  /// one highlight per line but a single undo step, matching how the user
+  /// perceives the gesture.
+  @MainActor
+  private func createSnappedHighlights(_ segments: [AnnotateTextSnapSegment]) {
+    let items = AnnotationFactory.createTextSnappedHighlights(
+      segments: segments,
+      context: AnnotationFactory.CreationContext(
+        properties: state.annotationCreationProperties(for: .highlighter),
+        arrowStyle: state.arrowStyle,
+        blurType: state.blurType,
+        counterValue: 0,
+        watermarkText: state.watermarkText,
+        activeAnnotationBounds: state.activeAnnotationBounds
+      )
+    )
+    guard !items.isEmpty else { return }
+
+    state.saveState()
+    state.annotations.append(contentsOf: items)
+    state.deselectAnnotation()
+  }
+
+  private func createTextAnnotation(at point: CGPoint) {
+    let properties = state.annotationCreationProperties(for: .text)
+    let initialBounds = AnnotateTextLayout.bounds(
+      text: "",
+      font: AnnotateTextLayout.font(
+        size: properties.fontSize,
+        fontName: properties.fontName,
+        textStyle: properties.textStyle
+      ),
+      origin: .zero,
+      constrainedWidth: AnnotateTextFrameGeometry.newTextWidth,
+      presentation: properties.textPresentation
+    )
+    // Как у эталона (ANN-043): рамка ~100 pt, по вертикали центром в точке клика,
+    // левый край чуть левее неё.
+    let bounds = AnnotateTextFrameGeometry.newTextBounds(
+      at: point,
+      height: initialBounds.height,
+      within: state.activeAnnotationBounds
+    )
+    // Start with empty text - user will type in the overlay
+    let item = AnnotationItem(type: .text(""), bounds: bounds, properties: properties)
+    state.annotations.append(item)
+    state.useAutomaticTextWidth(for: item.id)
+    state.prepareTextCalloutTail(for: item.id)
+    state.selectedAnnotationId = item.id
+    state.beginTextEditing(id: item.id, recordsUndo: false) // Enter edit mode immediately
+  }
+
+  // MARK: - Drawing
+
+  /// Current items for display: gesture-local copies shadow state items while
+  /// a drag/resize is active.
+  private func currentDisplayItems() -> [AnnotationItem] {
+    gestureLocalItems.isEmpty
+      ? state.annotations
+      : state.annotations.map { gestureLocalItems[$0.id] ?? $0 }
+  }
+
+  /// Ids of annotations pulled out of the static layers because they are being
+  /// manipulated. Empty unless exactly one item is dragged/resized.
+  private var gestureExcludedIds: Set<UUID> {
+    if isResizingAnnotation {
+      return resizingAnnotationId.map { [$0] } ?? []
+    }
+    if isDraggingAnnotation {
+      let ids = draggingAnnotationIds.isEmpty
+        ? Set(draggingAnnotationId.map { [$0] } ?? [])
+        : draggingAnnotationIds
+      // Exact z-order is only guaranteed for a single dragged item; multi-item
+      // drags keep everything in the static layer.
+      return ids.count == 1 ? ids : []
+    }
+    return []
+  }
+
+  /// Whether the dragged item gets its own live layer between the static
+  /// below/above layers (exact z-order during the gesture).
+  private var usesDragLayerSplit: Bool {
+    guard isResizingAnnotation || isDraggingAnnotation else { return false }
+    if isDraggingAnnotation, gestureExcludedIds.isEmpty { return false } // multi-item drag
+    // Selection chrome is rendered in dedicated live layers, so it does not
+    // require invalidating static annotation layers during the gesture.
+    return true
+  }
+
+  /// Splits display items into the three drawing layers, preserving the
+  /// `renderOrdered` z-order around the dragged item.
+  private func partitionedDisplayItems() -> (below: [AnnotationItem], dragged: [AnnotationItem], above: [AnnotationItem]) {
+    // Highlighter живёт в отдельном слое под остальными аннотациями.
+    let ordered = currentDisplayItems().renderOrdered.filter { !$0.type.isHighlight }
+    guard usesDragLayerSplit else {
+      return (ordered, [], [])
+    }
+    let excluded = gestureExcludedIds
+    let splitIndex = ordered.firstIndex(where: { excluded.contains($0.id) }) ?? ordered.endIndex
+    let below = Array(ordered[..<splitIndex])
+    let dragged = ordered[splitIndex...].filter { excluded.contains($0.id) }
+    let above = ordered[splitIndex...].filter { !excluded.contains($0.id) }
+    return (below, dragged, above)
+  }
+
+  /// Resolves shared render inputs for one draw pass and drops the blur cache
+  /// when the source image changed.
+  private func prepareRenderInputs() -> (sourceImage: NSImage?, sourceCGImage: CGImage?) {
+    let effectiveSourceImage = state.effectiveSourceImage
+    let currentImageIdentifier = effectiveSourceImage.map(ObjectIdentifier.init)
+    if currentImageIdentifier != lastSourceImageIdentifier {
+      blurCacheManager.clearAll()
+      lastSourceImageIdentifier = currentImageIdentifier
+    }
+    return (effectiveSourceImage, effectiveSourceImage?.cgImage(forProposedRect: nil, context: nil, hints: nil))
+  }
+
+  private func makeRenderer(sourceImage: NSImage?, sourceCGImage: CGImage?, in context: CGContext) -> AnnotationRenderer {
+    AnnotationRenderer(
+      context: context,
+      drawsObjectShadow: state.annotatePreferences.drawObjectShadow,
+      editingTextId: state.editingTextAnnotationId,
+      sourceImage: sourceImage,
+      sourceCGImage: sourceCGImage,
+      blurCacheManager: blurCacheManager,
+      interactiveBlurAnnotationIds: activeInteractiveBlurAnnotationIds(),
+      interactiveEmbeddedImageAnnotationId: activeInteractiveEmbeddedImageAnnotationId(),
+      embeddedImageProvider: { [state] assetId in
+        state.embeddedImage(for: assetId)
+      },
+      embeddedCGImageProvider: { [state] assetId in
+        state.embeddedCGImage(for: assetId)
+      }
+    )
+  }
+
+  // MARK: Layer draw bodies (invoked by CanvasLayerView, on that view's context)
+
+  /// Слой Highlighter: готовые штрихи и превью текущего штриха.
+  private func drawHighlights(dirtyRect: NSRect) {
+    drawAnnotationItems(currentDisplayItems().renderOrdered.filter { $0.type.isHighlight }, dirtyRect: dirtyRect)
+    guard let context = NSGraphicsContext.current?.cgContext else { return }
+    let (sourceImage, sourceCGImage) = prepareRenderInputs()
+    context.saveGState()
+    context.scaleBy(x: displayScale, y: displayScale)
+    context.translateBy(x: -effectiveCanvasBounds.minX, y: -effectiveCanvasBounds.minY)
+    drawCurrentStrokePreview(sourceImage: sourceImage, sourceCGImage: sourceCGImage, in: context, inHighlightLayer: true)
+    context.restoreGState()
+  }
+
+  private func drawStaticBelow(dirtyRect: NSRect) {
+    drawAnnotationItems(partitionedDisplayItems().below, dirtyRect: dirtyRect)
+  }
+
+  private func drawDraggedItems(dirtyRect: NSRect) {
+    drawAnnotationItems(partitionedDisplayItems().dragged, dirtyRect: dirtyRect)
+  }
+
+  private func drawStaticAbove(dirtyRect: NSRect) {
+    drawAnnotationItems(partitionedDisplayItems().above, dirtyRect: dirtyRect)
+  }
+
+  /// Draws annotation content. Selection chrome is composited in dedicated
+  /// layers so zooming does not invalidate these static backing stores.
+  private func drawAnnotationItems(_ items: [AnnotationItem], dirtyRect: NSRect) {
+    guard !items.isEmpty,
+          let context = NSGraphicsContext.current?.cgContext else { return }
+
+    let (sourceImage, sourceCGImage) = prepareRenderInputs()
+    context.saveGState()
+    context.scaleBy(x: displayScale, y: displayScale)
+    context.translateBy(x: -effectiveCanvasBounds.minX, y: -effectiveCanvasBounds.minY)
+
+    let renderer = makeRenderer(sourceImage: sourceImage, sourceCGImage: sourceCGImage, in: context)
+    let cullingPadding = max(24, 8 / max(displayScale, 0.0001))
+    let imageDirtyRect = displayToImage(dirtyRect).insetBy(dx: -cullingPadding, dy: -cullingPadding)
+
+    for annotation in items {
+      guard annotation.renderBounds.intersects(imageDirtyRect) else { continue }
+      renderer.draw(annotation)
+    }
+
+    context.restoreGState()
+  }
+
+  /// Unified Spotlight overlay pass (below annotations, above base image).
+  /// Opacity is sourced from each item's own properties so slider changes reflect immediately.
+  private func drawSpotlightOverlay(dirtyRect _: NSRect) {
+    guard let context = NSGraphicsContext.current?.cgContext else { return }
+    context.saveGState()
+    context.scaleBy(x: displayScale, y: displayScale)
+    context.translateBy(x: -effectiveCanvasBounds.minX, y: -effectiveCanvasBounds.minY)
+
+    let spotlightCreationProps = state.annotationCreationProperties(for: .spotlight)
+    let spotlightRegions = currentDisplayItems().compactMap { a -> SpotlightRegion? in
+      guard case .spotlight = a.type else { return nil }
+      return SpotlightRegion(
+        rect: a.bounds,
+        cornerRadius: a.properties.cornerRadius,
+        opacity: a.properties.spotlightOpacity,
+        strokeColor: NSColor(a.properties.strokeColor).cgColor,
+        strokeWidth: a.properties.strokeWidth,
+        lineStyle: a.properties.lineStyle,
+        shape: a.properties.spotlightShape
+      )
+    }
+    let spotlightPreview: SpotlightRegion? = (isDrawing && state.selectedTool == .spotlight)
+      ? dragStart.flatMap { s in
+        currentPath.last.map {
+          SpotlightRegion(
+            rect: CGRect(x: min(s.x, $0.x), y: min(s.y, $0.y), width: abs($0.x - s.x), height: abs($0.y - s.y)),
+            cornerRadius: spotlightCreationProps.cornerRadius,
+            opacity: spotlightCreationProps.spotlightOpacity,
+            strokeColor: NSColor(spotlightCreationProps.strokeColor).cgColor,
+            strokeWidth: spotlightCreationProps.strokeWidth,
+            lineStyle: spotlightCreationProps.lineStyle,
+            shape: spotlightCreationProps.spotlightShape
+          )
+        }
+      }
+      : nil
+    SpotlightCompositor.drawOverlay(
+      regions: spotlightRegions,
+      previewRegion: spotlightPreview,
+      canvasRect: effectiveCanvasBounds,
+      in: context
+    )
+
+    context.restoreGState()
+  }
+
+  /// Live gesture previews: in-progress stroke and area-selection rect.
+  private func drawGesturePreview(dirtyRect _: NSRect) {
+    guard let context = NSGraphicsContext.current?.cgContext else { return }
+    let (sourceImage, sourceCGImage) = prepareRenderInputs()
+    context.saveGState()
+    context.scaleBy(x: displayScale, y: displayScale)
+    context.translateBy(x: -effectiveCanvasBounds.minX, y: -effectiveCanvasBounds.minY)
+    drawCurrentStrokePreview(sourceImage: sourceImage, sourceCGImage: sourceCGImage, in: context)
+    drawAreaSelectionPreview(in: context)
+    context.restoreGState()
+  }
+
+  private func drawSelectionUnderlays(dirtyRect: NSRect) {
+    drawSelectionItems(dirtyRect: dirtyRect) { annotation, context in
+      drawSelectionUnderlay(for: annotation, in: context)
+    }
+  }
+
+  private func drawSelectionChrome(dirtyRect: NSRect) {
+    drawSelectionItems(dirtyRect: dirtyRect) { [self] annotation, context in
+      drawSelectionAffordance(
+        for: annotation,
+        in: context,
+        showsHandles: state.selectedAnnotationIds.count == 1 && annotation.supportsResize
+      )
+    }
+  }
+
+  private func drawSelectionItems(
+    dirtyRect: NSRect,
+    draw: (AnnotationItem, CGContext) -> Void
+  ) {
+    guard let context = NSGraphicsContext.current?.cgContext else { return }
+
+    context.saveGState()
+    context.scaleBy(x: displayScale, y: displayScale)
+    context.translateBy(x: -effectiveCanvasBounds.minX, y: -effectiveCanvasBounds.minY)
+
+    let chromePadding = selectionChromeMetrics.imageLength(
+      forScreenPoints: AnnotateSelectionChromeMetrics.handleSize
+    )
+    let imageDirtyRect = displayToImage(dirtyRect).insetBy(dx: -chromePadding, dy: -chromePadding)
+    for annotation in currentDisplayItems()
+    where state.isAnnotationSelected(annotation.id) && annotation.renderBounds.intersects(imageDirtyRect) {
+      draw(annotation, context)
+    }
+
+    context.restoreGState()
+  }
+
+  /// Live preview of the in-progress stroke while a drawing gesture is active.
+  private func drawCurrentStrokePreview(
+    sourceImage: NSImage?,
+    sourceCGImage: CGImage?,
+    in context: CGContext,
+    inHighlightLayer: Bool = false
+  ) {
+    // Превью Highlighter рисует только его слой, остальные инструменты – слой превью.
+    guard (state.selectedTool == .highlighter) == inHighlightLayer else { return }
+    if state.selectedTool == .measure {
+      drawMeasurePreview(in: context)
+      return
+    }
+    guard isDrawing, let start = dragStart else { return }
+    let renderer = makeRenderer(sourceImage: sourceImage, sourceCGImage: sourceCGImage, in: context)
+
+    if state.selectedTool == .counter {
+      let item = AnnotationFactory.createAnnotation(
+        tool: .counter,
+        from: start,
+        to: currentPath.last ?? start,
+        path: [],
+        context: AnnotationFactory.CreationContext(
+          properties: state.annotationCreationProperties(for: .counter),
+          arrowStyle: .straight,
+          blurType: state.blurType,
+          counterValue: drawingCounterValue ?? 1,
+          watermarkText: state.watermarkText,
+          activeAnnotationBounds: state.activeAnnotationBounds,
+          counterArrowMinimumDragDistance: counterArrowMinimumDragDistance
+        )
+      )
+      if let item { renderer.draw(item) }
+    } else if state.selectedTool == .blur, let lastPoint = currentPath.last {
+      renderer.drawBlurPreview(
+        start: start,
+        currentPoint: lastPoint,
+        strokeColor: state.strokeColor,
+        blurType: state.blurType,
+        controlValue: state.annotationCreationProperties(for: .blur).strokeWidth
+      )
+    } else if state.selectedTool == .spotlight {
+      // Spotlight preview is handled in the unified overlay pass above.
+    } else if state.selectedTool == .highlighter, !snappedHighlightSegments.isEmpty {
+      renderer.drawSnappedHighlightPreview(
+        segments: snappedHighlightSegments,
+        strokeColor: state.annotationCreationProperties(for: .highlighter).strokeColor
+      )
+    } else {
+      let previewProperties = state.annotationCreationProperties(for: state.selectedTool)
+      renderer.drawCurrentStroke(
+        tool: state.selectedTool,
+        start: state.selectedTool == .arrow && state.annotatePreferences.invertsArrow(optionHeld: NSEvent.modifierFlags.contains(.option)) ? (currentPath.last ?? start) : start,
+        currentPath: state.selectedTool == .arrow && state.annotatePreferences.invertsArrow(optionHeld: NSEvent.modifierFlags.contains(.option)) ? [start] : (state.selectedTool == .pencil ? pencilPreviewPath(start: start) : currentPath),
+        strokeColor: previewProperties.strokeColor,
+        strokeWidth: previewProperties.strokeWidth,
+        fillColor: previewProperties.fillColor,
+        arrowStyle: state.arrowStyle,
+        arrowType: state.arrowType,
+        arrowBendDirection: state.arrowBendDirection,
+        arrowStartHead: state.arrowStartHead,
+        arrowEndHead: state.arrowEndHead,
+        lineStyle: previewProperties.lineStyle,
+        rectangleCornerRadius: previewProperties.cornerRadius,
+        watermarkText: state.watermarkText,
+        watermarkStyle: previewProperties.watermarkStyle,
+        watermarkOpacity: previewProperties.opacity,
+        watermarkRotationDegrees: previewProperties.rotationDegrees,
+        watermarkFontSize: previewProperties.fontSize
+      )
+    }
+  }
+
+  /// Hover span, or the dashed box while dragging past the click threshold.
+  private func drawMeasurePreview(in context: CGContext) {
+    if isDrawing, let start = dragStart {
+      let end = currentPath.last ?? drawingRawEndPoint ?? start
+      guard maxDrawingDistance(from: start, to: end, path: []) >= Self.measureClickThreshold,
+            let item = measureDragPreviewItem(from: start, to: end) else { return }
+      AnnotateMeasureRenderer.draw(item, color: NSColor(item.properties.strokeColor).cgColor, in: context, dashed: true)
+    } else if let item = measureHoverItem, state.measureMapper != nil {
+      AnnotateMeasureRenderer.draw(item, color: NSColor(item.properties.strokeColor).cgColor.copy(alpha: 0.8) ?? .black, in: context)
+    }
+  }
+
+  private func activeInteractiveBlurAnnotationIds() -> Set<UUID> {
+    let candidateIds: Set<UUID> = if isResizingAnnotation {
+      Set(resizingAnnotationId.map { [$0] } ?? [])
+    } else if isDraggingAnnotation {
+      draggingAnnotationIds.isEmpty
+        ? Set(draggingAnnotationId.map { [$0] } ?? [])
+        : draggingAnnotationIds
+    } else {
+      []
+    }
+
+    return Set(candidateIds.filter { id in
+      guard let annotation = state.annotations.first(where: { $0.id == id }),
+            case .blur = annotation.type else { return false }
+      return true
+    })
+  }
+
+  private func activeInteractiveEmbeddedImageAnnotationId() -> UUID? {
+    let candidateId: UUID? = if isResizingAnnotation {
+      resizingAnnotationId
+    } else if isDraggingAnnotation {
+      draggingAnnotationId
+    } else {
+      nil
+    }
+
+    guard let id = candidateId,
+          let annotation = state.annotations.first(where: { $0.id == id }),
+          case .embeddedImage = annotation.type else {
+      return nil
+    }
+    return id
+  }
+
+  private func drawSelectionAffordance(for annotation: AnnotationItem, in context: CGContext, showsHandles: Bool) {
+    switch annotation.type {
+    case .line, .arrow:
+      // Endpoint-editable items: a single selection is indicated purely by its
+      // draggable endpoint grips (drawn below), so nothing is painted over the
+      // body. Multi-selection falls back to a bounding box so the item still
+      // reads as part of the group.
+      if !showsHandles {
+        drawSelectionBounds(annotation.selectionDecorationBounds, in: context)
+      }
+    case .blur:
+      drawRedactionSelectionFrame(annotation.selectionDecorationBounds, in: context)
+    case .path(let points):
+      // Выделенный Draw эталон перекрашивает в светло-синий, без ручек и рамки.
+      drawSelectedStrokeRecolor(points: points, width: annotation.properties.strokeWidth, in: context)
+    case .highlight(let points):
+      drawSelectedStrokeRecolor(
+        points: points,
+        width: AnnotationRenderer.highlightLineWidth(forStrokeWidth: annotation.properties.strokeWidth),
+        in: context
+      )
+    case .text:
+      drawTextFrame(
+        annotation.selectionDecorationBounds,
+        isEditing: state.editingTextAnnotationId == annotation.id,
+        in: context
+      )
+    case .rectangle, .filledRectangle, .oval:
+      // Выделенную фигуру эталон показывает ореолом вдоль контура и круглыми ручками,
+      // пунктирной рамки нет (spec-066 R22, ref-rect-selected-3eq.png, b3r-ellipse-resize.png).
+      // Ореол рисует drawSelectionUnderlay; при групповом выделении рамка остаётся.
+      if !showsHandles {
+        drawSelectionBounds(annotation.selectionDecorationBounds, in: context)
+      }
+    default:
+      // Every other type reads as selected via a bounding box that frames the
+      // annotation instead of overlapping its body.
+      drawSelectionBounds(annotation.selectionDecorationBounds, in: context)
+    }
+
+    guard showsHandles else { return }
+    if case .arrow(let geometry) = annotation.type,
+       geometry.style != .straight {
+      drawArrowControlGuides(for: geometry, in: context)
+    }
+    drawResizeHandles(for: annotation, in: context)
+  }
+
+  private func drawArrowControlGuides(for geometry: ArrowGeometry, in context: CGContext) {
+    guard let controlPoint = geometry.resolvedControlPoint else { return }
+
+    let dashLength = selectionChromeMetrics.imageLength(forScreenPoints: 4)
+    context.saveGState()
+    context.setStrokeColor(NSColor.systemBlue.withAlphaComponent(0.4).cgColor)
+    context.setLineWidth(selectionChromeMetrics.imageLength(forScreenPoints: 1))
+    context.setLineDash(phase: 0, lengths: [dashLength, dashLength])
+    context.beginPath()
+    context.move(to: geometry.start)
+    context.addLine(to: controlPoint)
+    context.move(to: geometry.end)
+    context.addLine(to: controlPoint)
+    context.strokePath()
+    context.restoreGState()
+  }
+
+  /// Маски всех стилей выделяются одной сплошной светло-синей рамкой (ANN-722…749).
+  private func drawRedactionSelectionFrame(_ bounds: CGRect, in context: CGContext) {
+    let rgb = AnnotateSelectionChromeMetrics.selectedStrokeRGB
+    context.saveGState()
+    context.setLineDash(phase: 0, lengths: [])
+    context.setLineJoin(.miter)
+    context.setLineWidth(selectionChromeMetrics.imageLength(
+      forScreenPoints: AnnotateSelectionChromeMetrics.redactionFrameWidth
+    ))
+    context.setStrokeColor(CGColor(srgbRed: rgb.red, green: rgb.green, blue: rgb.blue,
+      alpha: AnnotateSelectionChromeMetrics.redactionFrameAlpha))
+    context.stroke(bounds)
+    context.restoreGState()
+  }
+
+  private func drawSelectionBounds(_ bounds: CGRect, in context: CGContext) {
+    context.setStrokeColor(NSColor.systemBlue.cgColor)
+    context.setLineWidth(selectionChromeMetrics.imageLength(
+      forScreenPoints: AnnotateSelectionChromeMetrics.selectionLineWidth
+    ))
+    let dashLength = selectionChromeMetrics.imageLength(
+      forScreenPoints: AnnotateSelectionChromeMetrics.selectionDashLength
+    )
+    context.setLineDash(phase: 0, lengths: [dashLength, dashLength])
+    context.stroke(bounds)
+    context.setLineDash(phase: 0, lengths: [])
+  }
+
+  /// Рамка текста эталона: светло-синяя, сплошная во время ввода и пунктирная
+  /// у выделенного текста (b3r-text-ref-1.png, b5-text-resize-ref.png).
+  private func drawTextFrame(_ bounds: CGRect, isEditing: Bool, in context: CGContext) {
+    context.saveGState()
+    context.setStrokeColor(NSColor.systemBlue.withAlphaComponent(
+      AnnotateSelectionChromeMetrics.textFrameAlpha
+    ).cgColor)
+    if isEditing {
+      context.setLineWidth(selectionChromeMetrics.imageLength(
+        forScreenPoints: AnnotateSelectionChromeMetrics.textFrameEditingLineWidth
+      ))
+      context.setLineDash(phase: 0, lengths: [])
+    } else {
+      context.setLineWidth(selectionChromeMetrics.imageLength(
+        forScreenPoints: AnnotateSelectionChromeMetrics.selectionLineWidth
+      ))
+      let dashLength = selectionChromeMetrics.imageLength(
+        forScreenPoints: AnnotateSelectionChromeMetrics.selectionDashLength
+      )
+      context.setLineDash(phase: 0, lengths: [dashLength, dashLength])
+    }
+    context.stroke(bounds)
+    context.restoreGState()
+  }
+
+  /// Selection underlay for freeform strokes: a soft accent-colored glow painted
+  /// beneath the annotation body so the body sits on top untouched. The glow is
+  /// wider than the ink, so it reads as a halo hugging the stroke's silhouette
+  /// rather than a line through it or a box around it.
+  private func drawSelectionUnderlay(for annotation: AnnotationItem, in context: CGContext) {
+    switch annotation.type {
+    case .line(let start, let end):
+      // Эталон подсвечивает выделенную Line синей полосой вдоль штриха.
+      drawLineSelectionBand(points: [start, end], bodyWidth: annotation.properties.strokeWidth, in: context)
+    case .arrow(let geometry):
+      drawLineSelectionBand(
+        points: geometry.sampledPoints(),
+        bodyWidth: annotation.properties.strokeWidth * 2,
+        in: context
+      )
+    case .rectangle, .filledRectangle:
+      // Ореол Rectangle повторяет контур фигуры с тем же скруглением (R22).
+      drawShapeSelectionBand(
+        AnnotationRenderer.roundedRectPath(in: annotation.bounds, cornerRadius: annotation.properties.cornerRadius),
+        bodyWidth: annotation.properties.strokeWidth,
+        in: context
+      )
+    case .oval:
+      drawShapeSelectionBand(
+        CGPath(ellipseIn: annotation.bounds, transform: nil),
+        bodyWidth: annotation.properties.strokeWidth,
+        in: context
+      )
+    default:
+      // Draw и Highlighter перекрашиваются поверх тела (drawSelectionAffordance).
+      break
+    }
+  }
+
+  /// Ореол вдоль контура фигуры под её телом: штрих шире тела на 3 pt с каждой стороны.
+  /// Углы прямоугольника у эталона прямые, поэтому стык – miter.
+  private func drawShapeSelectionBand(_ path: CGPath, bodyWidth: CGFloat, in context: CGContext) {
+    let inset = selectionChromeMetrics.imageLength(
+      forScreenPoints: AnnotateSelectionChromeMetrics.lineSelectionBandInset
+    )
+    context.saveGState()
+    context.setLineJoin(.miter)
+    context.setLineDash(phase: 0, lengths: [])
+    context.setStrokeColor(Self.selectionBlue(alpha: AnnotateSelectionChromeMetrics.lineSelectionBandAlpha))
+    context.setLineWidth(bodyWidth + inset * 2)
+    context.addPath(path)
+    context.strokePath()
+    context.restoreGState()
+  }
+
+  /// Синий выделения эталона #3982F7 (ручки и ореол, spec-066 R22).
+  static func selectionBlue(alpha: CGFloat = 1) -> CGColor {
+    let rgb = AnnotateSelectionChromeMetrics.handleCoreRGB
+    return CGColor(
+      srgbRed: CGFloat((rgb >> 16) & 255) / 255,
+      green: CGFloat((rgb >> 8) & 255) / 255,
+      blue: CGFloat(rgb & 255) / 255,
+      alpha: alpha
+    )
+  }
+
+  private func drawLineSelectionBand(points: [CGPoint], bodyWidth: CGFloat, in context: CGContext) {
+    guard points.count > 1 else { return }
+    let inset = selectionChromeMetrics.imageLength(
+      forScreenPoints: AnnotateSelectionChromeMetrics.lineSelectionBandInset
+    )
+    context.saveGState()
+    context.setLineCap(.round)
+    context.setLineJoin(.round)
+    context.setStrokeColor(Self.selectionBlue(alpha: AnnotateSelectionChromeMetrics.lineSelectionBandAlpha))
+    context.setLineWidth(bodyWidth + inset * 2)
+    strokePolyline(points, in: context)
+    context.restoreGState()
+  }
+
+  /// Светло-синяя копия штриха поверх тела: так эталон показывает выделенный
+  /// Draw или Highlighter. Точка из одного клика перекрашивается кружком.
+  private func drawSelectedStrokeRecolor(points: [CGPoint], width: CGFloat, in context: CGContext) {
+    guard let first = points.first else { return }
+    let rgb = AnnotateSelectionChromeMetrics.selectedStrokeRGB
+    context.saveGState()
+    context.setLineCap(.round)
+    context.setLineJoin(.round)
+    context.setLineDash(phase: 0, lengths: [])
+    context.setStrokeColor(CGColor(srgbRed: rgb.red, green: rgb.green, blue: rgb.blue, alpha: 1))
+    if points.allSatisfy({ $0 == first }) {
+      AnnotationRenderer.strokeDot(at: first, diameter: width, in: context)
+    } else {
+      context.setLineWidth(width)
+      strokePolyline(points, in: context)
+    }
+    context.restoreGState()
+  }
+
+  private func strokePolyline(_ points: [CGPoint], in context: CGContext) {
+    guard let first = points.first else { return }
+
+    context.beginPath()
+    context.move(to: first)
+    for point in points.dropFirst() {
+      context.addLine(to: point)
+    }
+    context.strokePath()
+  }
+
+  private func drawResizeHandles(for annotation: AnnotationItem, in context: CGContext) {
+    let isText: Bool = {
+      if case .text = annotation.type { return true }
+      return false
+    }()
+
+    for (handle, rect) in resizeHandleRects(for: annotation, in: .image) {
+      if isText, handle == .bottomRight {
+        // Квадратик кегля текста: синий в белой кайме, как у эталона.
+        let border = selectionChromeMetrics.imageLength(
+          forScreenPoints: AnnotateSelectionChromeMetrics.textScaleHandleBorderWidth
+        )
+        context.saveGState()
+        context.setFillColor(NSColor.white.cgColor)
+        context.addPath(CGPath(roundedRect: rect, cornerWidth: border, cornerHeight: border, transform: nil))
+        context.fillPath()
+        context.setFillColor(NSColor.systemBlue.cgColor)
+        context.fill(rect.insetBy(dx: border, dy: border))
+        context.restoreGState()
+        continue
+      }
+      // Все остальные ручки – круги эталона: белый диск 16 pt с тенью и синее ядро 12 pt (R22).
+      drawCircularHandle(in: rect, context: context)
+    }
+  }
+
+  private func drawCircularHandle(in rect: CGRect, context: CGContext) {
+    let border = selectionChromeMetrics.imageLength(
+      forScreenPoints: AnnotateSelectionChromeMetrics.handleBorderWidth
+    )
+    context.saveGState()
+    // Параметры тени Core Graphics задаются в базовом пространстве вида, а не в координатах
+    // изображения, поэтому размытие в экранных пунктах и от масштаба холста не зависит.
+    context.setShadow(
+      offset: .zero,
+      blur: AnnotateSelectionChromeMetrics.handleShadowBlur,
+      color: NSColor.black.withAlphaComponent(AnnotateSelectionChromeMetrics.handleShadowAlpha).cgColor
+    )
+    context.setFillColor(NSColor.white.cgColor)
+    context.fillEllipse(in: rect)
+    context.restoreGState()
+
+    context.saveGState()
+    context.setFillColor(Self.selectionBlue())
+    context.fillEllipse(in: rect.insetBy(dx: border, dy: border))
+    context.restoreGState()
+  }
+
+  private func drawAreaSelectionPreview(in context: CGContext) {
+    guard isSelectingArea,
+          let start = selectionAreaStart,
+          let current = selectionAreaCurrent else { return }
+
+    let rect = CGRect(
+      x: min(start.x, current.x),
+      y: min(start.y, current.y),
+      width: abs(current.x - start.x),
+      height: abs(current.y - start.y)
+    ).standardized
+    guard rect.width > 0 || rect.height > 0 else { return }
+
+    context.setFillColor(NSColor.systemBlue.withAlphaComponent(0.12).cgColor)
+    context.fill(rect)
+    context.setStrokeColor(NSColor.systemBlue.cgColor)
+    context.setLineWidth(1)
+    context.setLineDash(phase: 0, lengths: [5, 3])
+    context.stroke(rect)
+    context.setLineDash(phase: 0, lengths: [])
+  }
+
+  // MARK: - Cursor Management
+
+  override func mouseEntered(with event: NSEvent) {
+    let displayPoint = convert(event.locationInWindow, from: nil)
+    updateCanvasMouseLocation(for: displayPoint)
+    updateCursor(for: event)
+  }
+
+  override func mouseExited(with _: NSEvent) {
+    state.updateCanvasMouseLocation(nil)
+    NSCursor.arrow.set()
+    updateMeasureHover(at: nil)
+  }
+
+  override func mouseMoved(with event: NSEvent) {
+    let displayPoint = convert(event.locationInWindow, from: nil)
+    updateCanvasMouseLocation(for: displayPoint)
+    updateCursor(for: event)
+    updateMeasureHover(at: displayToImage(displayPoint))
+  }
+
+  // MARK: - Measure
+
+  /// Re-scans the span under the pointer for the Measure tool's hover preview (< 1 ms).
+  private func updateMeasureHover(at imagePoint: CGPoint?) {
+    var item: AnnotationItem?
+    if state.selectedTool == .measure, !isDrawing, let imagePoint,
+       state.activeAnnotationBounds.contains(imagePoint),
+       let mapper = state.measureMapper,
+       let span = mapper.span(at: imagePoint, axis: state.measureAxis, tolerance: state.measureTolerance, unit: state.measureUnit) {
+      item = AnnotationItem(
+        type: .measurement(span.geometry),
+        bounds: span.bounds,
+        properties: state.annotationCreationProperties(for: .measure)
+      )
+    }
+    guard item?.type != measureHoverItem?.type || item?.bounds != measureHoverItem?.bounds else { return }
+    measureHoverItem = item
+    invalidateLiveLayers()
+  }
+
+  /// Commits a Measure gesture: a click pins the span under it, a drag measures a box that
+  /// snaps to the content inside (⌘ keeps the dragged box).
+  private func commitMeasurement(from start: CGPoint, to end: CGPoint, isClick: Bool, keepsRawBox: Bool) {
+    guard let mapper = state.measureMapper else { return }
+    let result: (geometry: MeasureGeometry, bounds: CGRect)?
+    if isClick {
+      // Same rule as the hover preview: nothing is measured outside the crop.
+      guard state.activeAnnotationBounds.contains(start) else { return }
+      result = mapper.span(at: start, axis: state.measureAxis, tolerance: state.measureTolerance, unit: state.measureUnit)
+    } else {
+      let bounds = state.activeAnnotationBounds
+      let clampedEnd = CGPoint(x: min(max(end.x, bounds.minX), bounds.maxX), y: min(max(end.y, bounds.minY), bounds.maxY))
+      result = mapper.box(from: start, to: clampedEnd, snaps: !keepsRawBox, tolerance: state.measureTolerance, unit: state.measureUnit)
+    }
+    guard let result else { return }
+    let item = state.addMeasurement(geometry: result.geometry, bounds: result.bounds)
+    state.selectedAnnotationId = item.id
+    autoSelectedAnnotationId = item.id
+  }
+
+  /// The dragged box before it snaps, drawn dashed.
+  private func measureDragPreviewItem(from start: CGPoint, to end: CGPoint) -> AnnotationItem? {
+    guard let mapper = state.measureMapper else { return nil }
+    let box = mapper.box(from: start, to: end, snaps: false, tolerance: state.measureTolerance, unit: state.measureUnit)
+    return AnnotationItem(type: .measurement(box.geometry), bounds: box.bounds, properties: state.annotationCreationProperties(for: .measure))
+  }
+
+  private func updateCanvasMouseLocation(for displayPoint: CGPoint) {
+    state.updateCanvasMouseLocation(displayToImage(displayPoint))
+  }
+
+  /// Option changes what a drawing-tool press does, so refresh the hover
+  /// cursor when modifiers change without the mouse moving. The event's own
+  /// location is not meaningful for flagsChanged; use the live pointer.
+  private func refreshHoverCursorForModifierChange(_ event: NSEvent) {
+    guard !isDrawing, !isDraggingAnnotation, !isResizingAnnotation, !isSelectingArea,
+          !isCropResizing, !isCropDragging, !isCropDrawing, !isCutOutDrawing,
+          let window else { return }
+    let windowPoint = window.mouseLocationOutsideOfEventStream
+    guard receivesPointer(atWindowPoint: windowPoint) else { return }
+    updateCursor(at: convert(windowPoint, from: nil), optionHeld: event.modifierFlags.contains(.option))
+  }
+
+  /// Whether the pointer at this window point belongs to the canvas, by the
+  /// rule hover uses: the window's hit view is the canvas itself, or the zoom
+  /// proxy whose interaction target is the canvas. Chrome over a zoomed-in
+  /// canvas (sidebar, toolbar) is not the canvas even inside its bounds.
+  func receivesPointer(atWindowPoint windowPoint: NSPoint) -> Bool {
+    guard let contentView = window?.contentView else { return false }
+    let hitView = contentView.hitTest(contentView.superview?.convert(windowPoint, from: nil) ?? windowPoint)
+    if hitView === self { return true }
+    if let proxy = hitView as? CanvasInteractionProxyNSView {
+      return proxy.interactionTarget(at: proxy.convert(windowPoint, from: nil)) === self
+    }
+    return false
+  }
+
+  /// Hover cursor for drawing tools, mirroring mouseDown routing.
+  static func drawingToolHoverCursor(for intent: DrawingToolPressIntent) -> NSCursor {
+    switch intent {
+    case .moveSelection:
+      return .openHand
+    case .selectNow, .drawThenMaybeSelect:
+      return .pointingHand
+    case .draw:
+      return .arrow
+    }
+  }
+
+  private func updateCursor(for event: NSEvent) {
+    updateCursor(
+      at: convert(event.locationInWindow, from: nil),
+      optionHeld: event.modifierFlags.contains(.option)
+    )
+  }
+
+  private func updateCursor(at displayPoint: CGPoint, optionHeld: Bool) {
+    let imagePoint = displayToImage(displayPoint)
+    let isDrawingTool = state.selectedTool != .selection && state.selectedTool != .crop
+
+    // Cut out always draws a full-crossing strip — crosshair everywhere on the
+    // canvas, no annotation affordances while the mode is active.
+    if state.selectedTool == .cutOut {
+      NSCursor.crosshair.set()
+      return
+    }
+
+    // A click while editing text only commits the edit (mouseDown checks this
+    // before resize handles, for every tool), so promise nothing else.
+    if state.editingTextAnnotationId != nil {
+      NSCursor.arrow.set()
+      return
+    }
+
+    // Check resize handles first for single selection (skipped while Option
+    // makes a drawing tool draw, as in mouseDown, which also refuses resizes
+    // `canResizeAnnotation` rules out).
+    if !Self.drawingToolOptionDraws(tool: state.selectedTool, optionHeld: optionHeld),
+       state.selectedAnnotationIds.count == 1,
+       let selectedId = state.selectedAnnotationIds.first,
+       let annotation = state.annotations.first(where: { $0.id == selectedId }) {
+      if annotation.supportsResize,
+         canResizeAnnotation(annotation),
+         let handle = hitTestHandle(at: displayPoint, for: annotation, in: .canvas) {
+        setCursorForHandle(handle)
+        return
+      }
+    }
+
+    // Drawing tools mirror mouseDown routing so the cursor never promises a
+    // grab the click won't perform: open hand on a selected item's edge,
+    // pointing hand on an unselected edge ("click selects"), and the default
+    // cursor everywhere else, including shape interiors.
+    if isDrawingTool {
+      // Same edge hit and selection mouseDown routes with, so hover and click
+      // agree, including in the margin outside the canvas.
+      let intent = Self.drawingToolPressIntent(
+        tool: state.selectedTool,
+        edgeHit: drawingToolEdgeHit(atDisplayPoint: displayPoint),
+        selectedIds: userSelectedAnnotationIds,
+        optionHeld: optionHeld
+      )
+      Self.drawingToolHoverCursor(for: intent).set()
+      return
+    }
+
+    // Check if over a selected annotation body
+    if state.selectedAnnotations.contains(where: {
+      $0.moveHitContains(imagePoint, baseTolerance: annotationHitToleranceInImagePoints)
+    }) {
+      NSCursor.openHand.set()
+      return
+    }
+
+    // Show hand cursor when hovering over any annotation (for move/resize)
+    if hitTestAnnotation(at: imagePoint) != nil {
+      NSCursor.pointingHand.set()
+      return
+    }
+
+    // Check crop handles when crop tool is active
+    if state.selectedTool == .crop, let cropRect = state.cropRect {
+      if let handle = hitTestCropHandle(at: imagePoint, for: cropRect) {
+        setCursorForCropHandle(handle)
+        return
+      }
+      if CropDragSelection.shouldBeginDrawing(
+        at: imagePoint, cropRect: cropRect, imageBounds: state.sourceImageBounds
+      ) {
+        NSCursor.crosshair.set()
+        return
+      }
+      // Check if over crop body
+      if cropRect.contains(imagePoint) {
+        NSCursor.openHand.set()
+        return
+      }
+    }
+
+    // Default cursor
+    NSCursor.arrow.set()
+  }
+
+  private func setCursorForHandle(_ handle: ResizeHandle) {
+    switch handle {
+    case .topLeft, .bottomRight, .lineStart, .lineEnd, .arrowControl, .textCalloutTail, .counterArrowTip:
+      NSCursor.crosshair.set()
+    case .topRight, .bottomLeft:
+      NSCursor.crosshair.set()
+    case .top, .bottom:
+      NSCursor.resizeUpDown.set()
+    case .left, .right:
+      NSCursor.resizeLeftRight.set()
+    }
+  }
+
+  private func setCursorForCropHandle(_ handle: CropHandle) {
+    // Note: In image coordinates, Y increases upward (bottom-left origin)
+    // But visually on screen, Y increases downward (top-left origin)
+    // So topLeft visually appears at top-left of screen
+    switch handle {
+    case .topLeft, .bottomRight:
+      // NW-SE diagonal resize (↖↘)
+      NSCursor(image: diagonalResizeCursorImage(nwse: true), hotSpot: NSPoint(x: 8, y: 8)).set()
+    case .topRight, .bottomLeft:
+      // NE-SW diagonal resize (↗↙)
+      NSCursor(image: diagonalResizeCursorImage(nwse: false), hotSpot: NSPoint(x: 8, y: 8)).set()
+    case .top, .bottom:
+      NSCursor.resizeUpDown.set()
+    case .left, .right:
+      NSCursor.resizeLeftRight.set()
+    case .body:
+      NSCursor.openHand.set()
+    }
+  }
+
+  /// Generate diagonal resize cursor image
+  private func diagonalResizeCursorImage(nwse: Bool) -> NSImage {
+    let size = NSSize(width: 16, height: 16)
+    let image = NSImage(size: size)
+    image.lockFocus()
+
+    let path = NSBezierPath()
+    path.lineWidth = 1.5
+    path.lineCapStyle = .round
+
+    if nwse {
+      // NW-SE diagonal (↖↘)
+      // Arrow pointing to top-left
+      path.move(to: NSPoint(x: 3, y: 13))
+      path.line(to: NSPoint(x: 3, y: 8))
+      path.move(to: NSPoint(x: 3, y: 13))
+      path.line(to: NSPoint(x: 8, y: 13))
+      // Main diagonal line
+      path.move(to: NSPoint(x: 3, y: 13))
+      path.line(to: NSPoint(x: 13, y: 3))
+      // Arrow pointing to bottom-right
+      path.move(to: NSPoint(x: 13, y: 3))
+      path.line(to: NSPoint(x: 13, y: 8))
+      path.move(to: NSPoint(x: 13, y: 3))
+      path.line(to: NSPoint(x: 8, y: 3))
+    } else {
+      // NE-SW diagonal (↗↙)
+      // Arrow pointing to top-right
+      path.move(to: NSPoint(x: 13, y: 13))
+      path.line(to: NSPoint(x: 13, y: 8))
+      path.move(to: NSPoint(x: 13, y: 13))
+      path.line(to: NSPoint(x: 8, y: 13))
+      // Main diagonal line
+      path.move(to: NSPoint(x: 13, y: 13))
+      path.line(to: NSPoint(x: 3, y: 3))
+      // Arrow pointing to bottom-left
+      path.move(to: NSPoint(x: 3, y: 3))
+      path.line(to: NSPoint(x: 3, y: 8))
+      path.move(to: NSPoint(x: 3, y: 3))
+      path.line(to: NSPoint(x: 8, y: 3))
+    }
+
+    // Draw white outline for visibility
+    NSColor.white.setStroke()
+    path.lineWidth = 3
+    path.stroke()
+
+    // Draw black line
+    NSColor.black.setStroke()
+    path.lineWidth = 1.5
+    path.stroke()
+
+    image.unlockFocus()
+    return image
+  }
+
+  // MARK: - Crop Handling
+
+  private func handleCropMouseDown(at imagePoint: CGPoint, displayPoint: CGPoint) {
+    state.collapseSidebarForCropInteraction()
+
+    // Initialize crop if not set, then let the same press draw a new rect
+    if state.cropRect == nil {
+      Task { @MainActor in
+        state.initializeCrop()
+      }
+      beginCropDrawing(at: imagePoint, displayPoint: displayPoint)
+      return
+    }
+
+    // Re-enable crop editing if clicking on crop area when not active
+    if !state.isCropActive {
+      Task { @MainActor in
+        state.isCropActive = true
+      }
+    }
+
+    guard let cropRect = state.cropRect else { return }
+
+    // Check for handle hit
+    if let handle = hitTestCropHandle(at: imagePoint, for: cropRect) {
+      if handle == .body {
+        isCropDragging = true
+        dragOffset = CGPoint(
+          x: imagePoint.x - cropRect.origin.x,
+          y: imagePoint.y - cropRect.origin.y
+        )
+      } else {
+        isCropResizing = true
+        activeCropHandle = handle
+      }
+      originalCropRect = cropRect
+    } else if CropDragSelection.shouldBeginDrawing(
+      at: imagePoint, cropRect: cropRect, imageBounds: state.sourceImageBounds
+    ) {
+      // Outside the crop, or nothing chosen yet - draw a new rect
+      beginCropDrawing(at: imagePoint, displayPoint: displayPoint)
+    } else if cropRect.contains(imagePoint) {
+      // Clicked inside crop area - start dragging
+      isCropDragging = true
+      dragOffset = CGPoint(
+        x: imagePoint.x - cropRect.origin.x,
+        y: imagePoint.y - cropRect.origin.y
+      )
+      originalCropRect = cropRect
+    }
+  }
+
+  private func beginCropDrawing(at imagePoint: CGPoint, displayPoint: CGPoint) {
+    isCropDrawing = true
+    cropDrawDidMove = false
+    cropDrawAnchor = imagePoint
+    cropDrawStartDisplayPoint = displayPoint
+  }
+
+  private func handleCropDraw(to point: CGPoint, shiftHeld: Bool, commandHeld: Bool) {
+    // ⇧ draws a square; a fixed aspect ratio from the toolbar always applies.
+    let aspectRatio: CGFloat? = if let ratio = state.effectiveCropRatio {
+      ratio
+    } else if shiftHeld {
+      1
+    } else {
+      nil
+    }
+
+    var newRect = CropDragSelection.rect(
+      anchor: cropDrawAnchor,
+      current: point,
+      bounds: state.sourceImageBounds,
+      aspectRatio: aspectRatio
+    )
+
+    // Same snapping rules as handle resizing: only the corner under the
+    // pointer snaps, and ⌘ / a locked ratio disables it.
+    if CropEdgeSnapping.isActive(enabled: state.isCropEdgeSnappingEnabled, commandHeld: commandHeld), aspectRatio == nil,
+       let profile = state.cropEdgeProfile {
+      let snapTolerance = 10 / max(displayScale * state.zoomLevel, 0.0001)
+      newRect = CropEdgeSnapping.resolve(
+        handle: CropDragSelection.movingHandle(anchor: cropDrawAnchor, current: point),
+        proposed: newRect,
+        targets: profile,
+        tolerance: snapTolerance
+      )
+    }
+
+    Task { @MainActor in
+      state.updateCropRect(newRect)
+    }
+  }
+
+  private func hitTestCropHandle(at point: CGPoint, for cropRect: CGRect) -> CropHandle? {
+    // Use a fixed handle radius in image coordinates (not scaled)
+    let handleRadius: CGFloat = max(15, 12 / displayScale)
+
+    // In image coordinates: origin is bottom-left, Y increases upward
+    let handles: [(CropHandle, CGPoint)] = [
+      (.topLeft, CGPoint(x: cropRect.minX, y: cropRect.maxY)),
+      (.top, CGPoint(x: cropRect.midX, y: cropRect.maxY)),
+      (.topRight, CGPoint(x: cropRect.maxX, y: cropRect.maxY)),
+      (.left, CGPoint(x: cropRect.minX, y: cropRect.midY)),
+      (.right, CGPoint(x: cropRect.maxX, y: cropRect.midY)),
+      (.bottomLeft, CGPoint(x: cropRect.minX, y: cropRect.minY)),
+      (.bottom, CGPoint(x: cropRect.midX, y: cropRect.minY)),
+      (.bottomRight, CGPoint(x: cropRect.maxX, y: cropRect.minY)),
+    ]
+
+    for (handle, center) in handles {
+      let distance = hypot(point.x - center.x, point.y - center.y)
+      if distance <= handleRadius {
+        return handle
+      }
+    }
+
+    return nil
+  }
+
+  private func handleCropResize(handle: CropHandle, currentPoint: CGPoint, shiftHeld: Bool = false, commandHeld: Bool = false) {
+    // Минимум рамки – 12 px снимка с учётом плотности, как у эталона (ANN-232).
+    let minSize = state.minimumCropSize
+
+    // Determine target aspect ratio
+    let aspectRatio: CGFloat? = if shiftHeld {
+      // Lock to current aspect ratio when Shift is held
+      originalCropRect.width / originalCropRect.height
+    } else if let ratio = state.effectiveCropRatio {
+      ratio
+    } else {
+      nil
+    }
+
+    var newRect = CropDragSelection.resizedRect(
+      handle: handle,
+      original: originalCropRect,
+      to: currentPoint,
+      minSize: minSize
+    )
+
+    // Apply aspect ratio constraint if needed
+    if let ratio = aspectRatio, handle != .body {
+      newRect = applyAspectRatio(ratio, to: newRect, handle: handle, original: originalCropRect)
+    }
+
+    // Snap the moving edge(s) to detected content borders (CleanShot X style).
+    // Skipped while ⌘ is held (temporary override), while ⇧ aspect-lock is
+    // active, or when a fixed aspect ratio owns the rect geometry.
+    if CropEdgeSnapping.isActive(enabled: state.isCropEdgeSnappingEnabled, commandHeld: commandHeld), !shiftHeld,
+       state.effectiveCropRatio == nil, let profile = state.cropEdgeProfile {
+      // Tolerance for ~10 screen px, in image points. The canvas NSView renders
+      // 1 image point as `displayScale` view px (AnnotateCanvasView passes the
+      // fit scale), and `.scaleEffect(state.zoomLevel)` is applied to the
+      // ZStack *outside* the NSView — so screen px per image point is
+      // displayScale × zoomLevel, and image points per screen px its inverse.
+      let snapTolerance = 10 / max(displayScale * state.zoomLevel, 0.0001)
+      newRect = CropEdgeSnapping.resolve(
+        handle: handle,
+        proposed: newRect,
+        targets: profile,
+        tolerance: snapTolerance,
+        minSize: minSize
+      )
+    }
+
+    Task { @MainActor in
+      state.updateCropRect(newRect)
+    }
+  }
+
+  /// Apply aspect ratio constraint to crop rect based on resize handle
+  private func applyAspectRatio(_ ratio: CGFloat, to rect: CGRect, handle: CropHandle, original: CGRect) -> CGRect {
+    var result = rect
+
+    // For edge handles, calculate the constrained dimension based on the handle direction
+    // For corner handles, adjust based on which dimension changed more
+    switch handle {
+    case .left, .right:
+      // Width is the primary dimension, calculate height from width
+      let newHeight = rect.width / ratio
+      let heightDiff = newHeight - rect.height
+      // Center the height adjustment
+      result.origin.y = rect.origin.y - heightDiff / 2
+      result.size.height = newHeight
+
+    case .top, .bottom:
+      // Height is the primary dimension, calculate width from height
+      let newWidth = rect.height * ratio
+      let widthDiff = newWidth - rect.width
+      // Center the width adjustment
+      result.origin.x = rect.origin.x - widthDiff / 2
+      result.size.width = newWidth
+
+    case .topLeft, .topRight, .bottomLeft, .bottomRight:
+      // For corners, adjust based on which dimension changed more
+      let currentRatio = rect.width / rect.height
+      if currentRatio > ratio {
+        // Too wide, adjust width to match height
+        let newWidth = rect.height * ratio
+        switch handle {
+        case .topLeft, .bottomLeft:
+          result.origin.x = original.maxX - newWidth
+          result.size.width = newWidth
+        case .topRight, .bottomRight:
+          result.size.width = newWidth
+        default:
+          break
+        }
+      } else {
+        // Too tall, adjust height to match width
+        let newHeight = rect.width / ratio
+        switch handle {
+        case .topLeft, .topRight:
+          result.size.height = newHeight
+        case .bottomLeft, .bottomRight:
+          result.origin.y = original.maxY - newHeight
+          result.size.height = newHeight
+        default:
+          break
+        }
+      }
+
+    case .body:
+      break
+    }
+
+    return result
+  }
+
+  private func handleCropDrag(to point: CGPoint) {
+    let newOrigin = CGPoint(
+      x: point.x - dragOffset.x,
+      y: point.y - dragOffset.y
+    )
+    var newRect = originalCropRect
+    newRect.origin = newOrigin
+
+    Task { @MainActor in
+      state.updateCropRect(newRect)
+    }
+  }
+}

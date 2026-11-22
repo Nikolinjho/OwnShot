@@ -1,0 +1,160 @@
+//
+//  ScrollingCaptureFrameSource.swift
+//  Snapzy
+//
+//  Region-scoped ScreenCaptureKit stream used for low-latency scrolling preview.
+//
+
+import AppKit
+import CoreImage
+import CoreMedia
+import Foundation
+import ScreenCaptureKit
+
+final class ScrollingCaptureFrameSource: NSObject {
+  private final class StreamReference: @unchecked Sendable {
+    let stream: SCStream
+
+    init(_ stream: SCStream) {
+      self.stream = stream
+    }
+  }
+
+  private let sampleQueue = DispatchQueue(
+    label: "com.snapzy.scrolling-capture.preview-stream",
+    qos: .userInteractive
+  )
+  private let minimumPublishInterval: TimeInterval
+  private let ciContext: CIContext
+
+  private var stream: SCStream?
+  private nonisolated(unsafe) var lastPublishedAt: TimeInterval = 0
+  private nonisolated(unsafe) var nextSequenceNumber = 0
+  private var onFrame: ((ScrollingCaptureFrame) -> Void)?
+  private var onFailure: ((String) -> Void)?
+
+  init(previewFPS: Int = 30) {
+    minimumPublishInterval = 1.0 / Double(max(1, previewFPS))
+    ciContext = CIContext(options: [.cacheIntermediates: false])
+  }
+
+  @MainActor
+  func start(
+    with context: ScreenCaptureManager.PreparedAreaCaptureContext,
+    frameHandler: @escaping (ScrollingCaptureFrame) -> Void,
+    failureHandler: @escaping (String) -> Void
+  ) async throws {
+    stop()
+
+    onFrame = frameHandler
+    onFailure = failureHandler
+    lastPublishedAt = 0
+    nextSequenceNumber = 0
+
+    let configuration = ScreenCaptureManager.shared.makeAreaStreamConfiguration(
+      from: context,
+      maximumFrameRate: 30,
+      showsCursor: false
+    )
+    let stream = SCStream(filter: context.contentFilter, configuration: configuration, delegate: self)
+    try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: sampleQueue)
+    self.stream = stream
+    try await stream.startCapture()
+    guard self.stream === stream else {
+      // The earlier stop may have run before this stream was ready to stop.
+      try? await stream.stopCapture()
+      throw CancellationError()
+    }
+  }
+
+  @MainActor
+  func stop() {
+    let activeStream = stream
+    stream = nil
+    onFrame = nil
+    onFailure = nil
+
+    guard let activeStream else { return }
+
+    do {
+      try activeStream.removeStreamOutput(self, type: .screen)
+    } catch {
+      // Best-effort teardown: stream may already be winding down.
+    }
+
+    let streamReference = StreamReference(activeStream)
+    Task.detached(priority: .userInitiated) {
+      do {
+        try await streamReference.stream.stopCapture()
+      } catch {
+        // Best-effort teardown: stream may already be stopped.
+      }
+    }
+  }
+}
+
+extension ScrollingCaptureFrameSource: SCStreamOutput {
+  nonisolated func stream(
+    _ stream: SCStream,
+    didOutputSampleBuffer sampleBuffer: CMSampleBuffer,
+    of type: SCStreamOutputType
+  ) {
+    autoreleasepool {
+      guard type == .screen, sampleBuffer.isValid else { return }
+      guard let pixelBuffer = sampleBuffer.imageBuffer else { return }
+
+      let attachments = CMSampleBufferGetSampleAttachmentsArray(
+        sampleBuffer,
+        createIfNecessary: false
+      ) as? [[SCStreamFrameInfo: Any]]
+      if
+        let statusRaw = attachments?.first?[.status] as? Int,
+        let status = SCFrameStatus(rawValue: statusRaw),
+        status != .complete
+      {
+        return
+      }
+
+      let now = ProcessInfo.processInfo.systemUptime
+      guard let displayTime = attachments?.first?[.displayTime] as? UInt64, displayTime > 0 else { return }
+      let capturedAt = CMClockMakeHostTimeFromSystemUnits(displayTime).seconds
+      guard capturedAt.isFinite, capturedAt > 0 else { return }
+      guard now - lastPublishedAt >= minimumPublishInterval else { return }
+
+      let imageRect = CGRect(
+        x: 0,
+        y: 0,
+        width: CVPixelBufferGetWidth(pixelBuffer),
+        height: CVPixelBufferGetHeight(pixelBuffer)
+      )
+      let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+      guard let cgImage = ciContext.createCGImage(ciImage, from: imageRect) else {
+        return
+      }
+
+      lastPublishedAt = now
+      nextSequenceNumber += 1
+      let frame = ScrollingCaptureFrame(
+        sequenceNumber: nextSequenceNumber,
+        image: cgImage,
+        capturedAt: capturedAt,
+        motionScore: nil
+      )
+      let streamID = ObjectIdentifier(stream)
+      DispatchQueue.main.async { [weak self] in
+        guard let self, self.stream.map({ ObjectIdentifier($0) }) == streamID else { return }
+        self.onFrame?(frame)
+      }
+    }
+  }
+}
+
+extension ScrollingCaptureFrameSource: SCStreamDelegate {
+  nonisolated func stream(_ stream: SCStream, didStopWithError error: Error) {
+    let streamID = ObjectIdentifier(stream)
+    DispatchQueue.main.async { [weak self] in
+      guard let self, self.stream.map({ ObjectIdentifier($0) }) == streamID else { return }
+      self.onFailure?(error.localizedDescription)
+    }
+  }
+}

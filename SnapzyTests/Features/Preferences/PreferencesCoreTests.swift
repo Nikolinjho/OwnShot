@@ -1,0 +1,269 @@
+//
+//  PreferencesCoreTests.swift
+//  SnapzyTests
+//
+//  Unit tests for persisted preferences value models.
+//
+
+@testable import Snapzy
+import XCTest
+
+@MainActor
+final class PreferencesCoreTests: XCTestCase {
+  /// Keep MainActor ObservableObjects alive for the test process; XCTest scope
+  /// cleanup can crash while deinitializing them on the macOS 15 back-deployed
+  /// Swift concurrency runtime.
+  private static var retainedNavigationStates: [PreferencesNavigationState] = []
+
+  private func makeNavigationState(initialTab: PreferencesTab) -> PreferencesNavigationState {
+    let navigation = PreferencesNavigationState(initialTab: initialTab)
+    Self.retainedNavigationStates.append(navigation)
+    return navigation
+  }
+
+  func testCloudUploadFloatingPositionStored_readsValidValueAndFallsBackToDefault() throws {
+    let defaults = try makeDefaults()
+    XCTAssertEqual(CloudUploadFloatingPosition.stored(userDefaults: defaults), .center)
+
+    defaults.set(CloudUploadFloatingPosition.top.rawValue, forKey: PreferencesKeys.cloudUploadsFloatingPosition)
+    XCTAssertEqual(CloudUploadFloatingPosition.stored(userDefaults: defaults), .top)
+
+    defaults.set("invalid", forKey: PreferencesKeys.cloudUploadsFloatingPosition)
+    XCTAssertEqual(CloudUploadFloatingPosition.stored(userDefaults: defaults), .center)
+  }
+
+  func testCloudShareLinkStyleStored_readsValidValueAndFallsBackToDescriptive() throws {
+    let defaults = try makeDefaults()
+    XCTAssertEqual(CloudShareLinkStyle.stored(userDefaults: defaults), .descriptive)
+
+    defaults.set(CloudShareLinkStyle.short.rawValue, forKey: PreferencesKeys.cloudShareLinkStyle)
+    XCTAssertEqual(CloudShareLinkStyle.stored(userDefaults: defaults), .short)
+
+    defaults.set("invalid", forKey: PreferencesKeys.cloudShareLinkStyle)
+    XCTAssertEqual(CloudShareLinkStyle.stored(userDefaults: defaults), .descriptive)
+  }
+
+  func testHistoryBackgroundStyleStored_readsValidValueAndFallsBackToDefault() throws {
+    let defaults = try makeDefaults()
+    XCTAssertEqual(HistoryBackgroundStyle.currentStoredStyle(userDefaults: defaults), .hud)
+
+    defaults.set(HistoryBackgroundStyle.solid.rawValue, forKey: PreferencesKeys.historyBackgroundStyle)
+    XCTAssertEqual(HistoryBackgroundStyle.currentStoredStyle(userDefaults: defaults), .solid)
+
+    defaults.set("invalid", forKey: PreferencesKeys.historyBackgroundStyle)
+    XCTAssertEqual(HistoryBackgroundStyle.currentStoredStyle(userDefaults: defaults), .hud)
+  }
+
+  func testAnnotateClipboardImageBehaviorStored_readsValidValueAndFallsBackToAsk() throws {
+    let defaults = try makeDefaults()
+    XCTAssertEqual(AnnotateClipboardImageBehavior.stored(userDefaults: defaults), .ask)
+
+    defaults.set(
+      AnnotateClipboardImageBehavior.loadAutomatically.rawValue,
+      forKey: PreferencesKeys.annotateClipboardImageOpenBehavior
+    )
+    XCTAssertEqual(AnnotateClipboardImageBehavior.stored(userDefaults: defaults), .loadAutomatically)
+
+    defaults.set("invalid", forKey: PreferencesKeys.annotateClipboardImageOpenBehavior)
+    XCTAssertEqual(AnnotateClipboardImageBehavior.stored(userDefaults: defaults), .ask)
+  }
+
+  func testAnnotateQuickPropertiesSyncPreference_defaultsToEnabled() throws {
+    let defaults = try makeDefaults()
+    XCTAssertTrue(AnnotateQuickPropertiesSyncPreference.isEnabled(userDefaults: defaults))
+
+    defaults.set(false, forKey: PreferencesKeys.annotateQuickPropertiesSyncEnabled)
+    XCTAssertFalse(AnnotateQuickPropertiesSyncPreference.isEnabled(userDefaults: defaults))
+
+    defaults.set(true, forKey: PreferencesKeys.annotateQuickPropertiesSyncEnabled)
+    XCTAssertTrue(AnnotateQuickPropertiesSyncPreference.isEnabled(userDefaults: defaults))
+  }
+
+  func testAnnotateToolPreference_usesDefaultAndOptionalLastTool() throws {
+    let defaults = try makeDefaults()
+    XCTAssertEqual(AnnotateToolPreference.defaultTool(userDefaults: defaults), .selection)
+    XCTAssertEqual(AnnotateToolPreference.initialTool(userDefaults: defaults), .selection)
+
+    defaults.set(AnnotationToolType.arrow.rawValue, forKey: PreferencesKeys.annotateDefaultTool)
+    XCTAssertEqual(AnnotateToolPreference.initialTool(userDefaults: defaults), .arrow)
+
+    defaults.set(true, forKey: PreferencesKeys.annotateRememberLastTool)
+    XCTAssertEqual(AnnotateToolPreference.initialTool(userDefaults: defaults), .arrow)
+
+    AnnotateToolPreference.remember(.text, userDefaults: defaults)
+    XCTAssertEqual(AnnotateToolPreference.initialTool(userDefaults: defaults), .text)
+  }
+
+  func testAnnotateToolPreference_rejectsUnsupportedAndInvalidValues() throws {
+    let defaults = try makeDefaults()
+    defaults.set(AnnotationToolType.crop.rawValue, forKey: PreferencesKeys.annotateDefaultTool)
+    XCTAssertEqual(AnnotateToolPreference.defaultTool(userDefaults: defaults), .selection)
+
+    defaults.set(AnnotationToolType.arrow.rawValue, forKey: PreferencesKeys.annotateDefaultTool)
+    defaults.set(true, forKey: PreferencesKeys.annotateRememberLastTool)
+    defaults.set("invalid", forKey: PreferencesKeys.annotateLastUsedTool)
+    XCTAssertEqual(AnnotateToolPreference.initialTool(userDefaults: defaults), .arrow)
+
+    AnnotateToolPreference.remember(.crop, userDefaults: defaults)
+    XCTAssertEqual(defaults.string(forKey: PreferencesKeys.annotateLastUsedTool), "invalid")
+  }
+
+  func testCombineSaveAsEditPreference_defaultsToEnabled() throws {
+    let defaults = try makeDefaults()
+    XCTAssertTrue(CombineSaveAsEditPreference.isEnabled(userDefaults: defaults))
+
+    defaults.set(false, forKey: PreferencesKeys.annotateCombineSaveAsEdit)
+    XCTAssertFalse(CombineSaveAsEditPreference.isEnabled(userDefaults: defaults))
+
+    defaults.set(true, forKey: PreferencesKeys.annotateCombineSaveAsEdit)
+    XCTAssertTrue(CombineSaveAsEditPreference.isEnabled(userDefaults: defaults))
+  }
+
+  func testPreferencesTabsRemainUniqueAndHashable() {
+    let tabs: Set<PreferencesTab> = [
+      .general,
+      .menuBar,
+      .capture,
+      .wallpaper,
+      .recording,
+      .annotate,
+      .quickAccess,
+      .history,
+      .shortcuts,
+      .permissions,
+      .commandLine,
+      .cloud,
+      .advanced,
+      .about,
+    ]
+
+    XCTAssertEqual(tabs.count, 14)
+    XCTAssertEqual(PreferencesTab.allCases.count, 14)
+  }
+
+  func testPreferencesTabSidebar_coversAllCasesExactlyOnce() {
+    // В сайдбаре 10 видимых разделов по порядку CleanShot X. Menu Bar, History,
+    // Permissions и Command Line остаются вкладками для переходов и поиска,
+    // но в сайдбар не входят (docs/parity-spec/areas/settings.md).
+    let order = PreferencesTab.sidebarOrder
+    XCTAssertEqual(order, [
+      .general, .shortcuts, .quickAccess, .wallpaper, .capture,
+      .recording, .annotate, .cloud, .advanced, .about,
+    ])
+    XCTAssertEqual(Set(order).count, order.count)
+    XCTAssertEqual(PreferencesTab.groups.count, 2)
+    XCTAssertEqual(PreferencesTab.groups.last, [.about])
+    XCTAssertEqual(
+      Set(PreferencesTab.allCases).subtracting(order),
+      [.menuBar, .history, .permissions, .commandLine]
+    )
+  }
+
+  func testPreferencesTab_symbolsAndTitlesAreNonEmpty() {
+    for tab in PreferencesTab.allCases {
+      XCTAssertFalse(tab.title.isEmpty, "Expected title for tab \(tab)")
+      XCTAssertFalse(tab.symbol.isEmpty, "Expected symbol for tab \(tab)")
+      XCTAssertEqual(tab.id, tab.rawValue)
+    }
+  }
+
+  func testPreferencesNavigationState_historyStackAndNavigation() {
+    let navigation = makeNavigationState(initialTab: .general)
+    XCTAssertEqual(navigation.selectedTab, .general)
+    XCTAssertFalse(navigation.canGoBack)
+    XCTAssertFalse(navigation.canGoForward)
+
+    // Selecting current tab should not push history
+    navigation.select(.general)
+    XCTAssertFalse(navigation.canGoBack)
+
+    // Navigate to capture
+    navigation.select(.capture)
+    XCTAssertEqual(navigation.selectedTab, .capture)
+    XCTAssertTrue(navigation.canGoBack)
+    XCTAssertFalse(navigation.canGoForward)
+    XCTAssertEqual(navigation.backStack, [.general])
+
+    // Navigate to annotate
+    navigation.select(.annotate)
+    XCTAssertEqual(navigation.selectedTab, .annotate)
+    XCTAssertEqual(navigation.backStack, [.general, .capture])
+
+    // Go back to capture
+    navigation.goBack()
+    XCTAssertEqual(navigation.selectedTab, .capture)
+    XCTAssertTrue(navigation.canGoBack)
+    XCTAssertTrue(navigation.canGoForward)
+    XCTAssertEqual(navigation.forwardStack, [.annotate])
+
+    // Go back to general
+    navigation.goBack()
+    XCTAssertEqual(navigation.selectedTab, .general)
+    XCTAssertFalse(navigation.canGoBack)
+    XCTAssertTrue(navigation.canGoForward)
+    XCTAssertEqual(navigation.forwardStack, [.annotate, .capture])
+
+    // Go forward to capture
+    navigation.goForward()
+    XCTAssertEqual(navigation.selectedTab, .capture)
+    XCTAssertTrue(navigation.canGoBack)
+    XCTAssertTrue(navigation.canGoForward)
+    XCTAssertEqual(navigation.backStack, [.general])
+    XCTAssertEqual(navigation.forwardStack, [.annotate])
+
+    // A new selection clears the forward stack
+    navigation.select(.shortcuts)
+    XCTAssertEqual(navigation.selectedTab, .shortcuts)
+    XCTAssertFalse(navigation.canGoForward)
+    XCTAssertEqual(navigation.backStack, [.general, .capture])
+  }
+
+  func testPreferencesNavigationState_heroPagesLeaveHeaderUntitled() {
+    let navigation = makeNavigationState(initialTab: .general)
+    XCTAssertEqual(navigation.title, PreferencesTab.general.title)
+
+    navigation.select(.shortcuts)
+    XCTAssertEqual(navigation.title, "", "The hero already names the page")
+  }
+
+  func testAboutContributor_propertiesAndCollections() {
+    XCTAssertFalse(AboutContributor.featured.isEmpty)
+    XCTAssertFalse(AboutContributor.all.isEmpty)
+    XCTAssertGreaterThan(AboutContributor.all.count, AboutContributor.featured.count)
+
+    let allUsernames = Set(AboutContributor.all.map(\.username))
+    XCTAssertEqual(
+      allUsernames.count,
+      AboutContributor.all.count,
+      "Usernames must be unique in all-time contributors list"
+    )
+
+    for contributor in AboutContributor.all {
+      XCTAssertFalse(contributor.name.isEmpty)
+      XCTAssertFalse(contributor.username.isEmpty)
+      XCTAssertEqual(contributor.id, contributor.username)
+      XCTAssertEqual(contributor.profileURL.absoluteString, "https://github.com/\(contributor.username)")
+    }
+
+    for featured in AboutContributor.featured {
+      XCTAssertTrue(
+        allUsernames.contains(featured.username),
+        "Featured contributor \(featured.username) should be in all contributors list"
+      )
+    }
+
+    XCTAssertFalse(L10n.PreferencesAbout.seeMore.isEmpty)
+    XCTAssertFalse(L10n.PreferencesAbout.seeLess.isEmpty)
+    XCTAssertNotEqual(L10n.PreferencesAbout.seeMore, L10n.PreferencesAbout.seeLess)
+  }
+
+  private func makeDefaults(
+    file: StaticString = #filePath,
+    line: UInt = #line
+  ) throws -> UserDefaults {
+    let suiteName = "SnapzyTests.PreferencesCoreTests.\(UUID().uuidString)"
+    let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName), file: file, line: line)
+    defaults.removePersistentDomain(forName: suiteName)
+    return defaults
+  }
+}

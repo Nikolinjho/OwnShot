@@ -1,0 +1,1043 @@
+//
+//  HistoryFloatingContentView.swift
+//  Snapzy
+//
+//  SwiftUI content for the floating history panel
+//
+
+import Combine
+import SwiftUI
+
+struct HistoryFloatingContentView: View {
+  @ObservedObject var manager: HistoryFloatingManager
+  @ObservedObject private var themeManager = ThemeManager.shared
+  @ObservedObject private var store = CaptureHistoryStore.shared
+  @AppStorage(PreferencesKeys.historyBackgroundStyle) private var backgroundStyle: HistoryBackgroundStyle = .defaultStyle
+  @Environment(\.colorScheme) private var colorScheme
+
+  @AppStorage(PreferencesKeys.historyEnabled) private var historyEnabled = true
+  @AppStorage(PreferencesKeys.historyRetentionDays) private var historyRetentionDays = 30
+  @State private var selectedCompactFilter: CaptureHistoryType? = nil
+  /// Фильтр Video Projects: проекты Studio пока заглушка, список всегда пуст
+  @State private var isVideoProjectsFilterSelected = false
+  @State private var usesExplicitCompactFilterSelection = false
+  @State private var selectedId: UUID? = nil
+  @State private var expandedFocusedId: UUID? = nil
+  @State private var expandedSelectedIds: Set<UUID> = []
+  @State private var expandedRangeBaselineIds: Set<UUID> = []
+  @State private var expandedLastSelectedId: UUID?
+  @State private var compactScrollOffset: CGFloat = 0
+  @State private var compactSelectionRevealTrigger = 0
+  @State private var isExpandedGridReady = false
+  @State private var expandedGridWarmupTask: Task<Void, Never>?
+  @StateObject private var scrollController = HistoryScrollController()
+  @StateObject private var searchViewModel: HistorySearchViewModel
+
+  init(manager: HistoryFloatingManager) {
+    self.manager = manager
+    _searchViewModel = StateObject(wrappedValue: HistorySearchViewModel(
+      searchTextPublisher: manager.$searchText.eraseToAnyPublisher(),
+      selectedFilterPublisher: manager.$expandedFilter.eraseToAnyPublisher(),
+      selectedTimeFilterPublisher: manager.$expandedTimeFilter.eraseToAnyPublisher()
+    ))
+  }
+
+  private var sortedRecords: [CaptureHistoryRecord] {
+    // CaptureHistoryStore already publishes rows ordered by capturedAt desc.
+    // Записи с пропавшими файлами эталон молча убирает из ленты.
+    store.feedRecords
+  }
+
+  private var compactRecords: [CaptureHistoryRecord] {
+    guard historyEnabled, !isVideoProjectsFilterSelected else { return [] }
+    return filteredRecords(
+      typeFilter: effectiveCompactFilter,
+      searchText: "",
+      timeFilter: .all,
+      limit: manager.maxDisplayedItems
+    )
+  }
+
+  private var expandedRecords: [CaptureHistoryRecord] {
+    searchViewModel.filteredRecords
+  }
+
+  private var activeRecords: [CaptureHistoryRecord] {
+    manager.presentationMode == .compact ? compactRecords : expandedRecords
+  }
+
+  private var activeRecordIDs: [UUID] {
+    activeRecords.map(\.id)
+  }
+
+  private var expandedRecordIDs: [UUID] {
+    expandedRecords.map(\.id)
+  }
+
+  private var expandedSelectedRecords: [CaptureHistoryRecord] {
+    expandedRecords.filter { expandedSelectedIds.contains($0.id) }
+  }
+
+  private var basePanelSize: CGSize {
+    // Полоса компактного режима тянется на всю ширину экрана.
+    HistoryFloatingLayout.contentSize(
+      for: manager.panelScale,
+      mode: manager.presentationMode,
+      on: ScreenUtility.activeScreen()
+    )
+  }
+
+  private var resolvedPanelScale: CGFloat {
+    HistoryFloatingLayout.effectiveScale(
+      for: manager.panelScale,
+      mode: manager.presentationMode,
+      on: ScreenUtility.activeScreen()
+    )
+  }
+
+  private var scaledPanelSize: CGSize {
+    HistoryFloatingLayout.panelSize(
+      for: manager.panelScale,
+      mode: manager.presentationMode,
+      on: ScreenUtility.activeScreen()
+    )
+  }
+
+  var body: some View {
+    content
+      .frame(width: basePanelSize.width, height: basePanelSize.height)
+      .background(
+        HistoryBackdropView(
+          style: backgroundStyle,
+          cornerRadius: HistoryFloatingLayout.baseCornerRadius(for: manager.presentationMode),
+          isFloatingPanel: true
+        )
+      )
+      .overlay(panelBorder)
+      .scaleEffect(resolvedPanelScale)
+      .frame(width: scaledPanelSize.width, height: scaledPanelSize.height)
+      // Тема системы в обоих стилях: эталон в светлой теме рисует светлую панель.
+      .preferredColorScheme(themeManager.systemAppearance)
+      .onAppear {
+        syncSelectionIfNeeded()
+        syncExpandedGridPresentation(for: manager.presentationMode)
+      }
+      .onDisappear {
+        expandedGridWarmupTask?.cancel()
+      }
+      .onChange(of: activeRecordIDs) { _ in
+        syncSelectionIfNeeded()
+      }
+      .onChange(of: expandedRecordIDs) { _ in
+        syncSelectionIfNeeded()
+        pruneExpandedSelection()
+        prefetchExpandedThumbnailsIfNeeded()
+      }
+      .onChange(of: manager.presentationMode) { _ in
+        if manager.presentationMode != .expanded {
+          clearExpandedSelection()
+        }
+        syncSelectionIfNeeded()
+        syncExpandedGridPresentation(for: manager.presentationMode)
+      }
+      .onReceive(NotificationCenter.default.publisher(for: .historyCopySelection)) { notification in
+        guard notification.object is HistoryFloatingPanel else { return }
+        copySelectedRecord()
+      }
+      .onReceive(NotificationCenter.default.publisher(for: .historyActivateSelection)) { notification in
+        guard notification.object is HistoryFloatingPanel else { return }
+        openSelectedRecord()
+      }
+      .onReceive(NotificationCenter.default.publisher(for: .historyQuickLookSelection)) { notification in
+        guard notification.object is HistoryFloatingPanel else { return }
+        quickLookSelectedRecord()
+      }
+      .onReceive(NotificationCenter.default.publisher(for: .historyDeleteSelection)) { notification in
+        guard notification.object is HistoryFloatingPanel else { return }
+        deleteSelectedRecords()
+      }
+      .onReceive(NotificationCenter.default.publisher(for: .historySelectAll)) { notification in
+        guard notification.object is HistoryFloatingPanel else { return }
+        guard manager.presentationMode == .expanded else { return }
+        selectAllExpandedRecords()
+      }
+      .onReceive(NotificationCenter.default.publisher(for: .historyMoveFocus)) { notification in
+        guard notification.object is HistoryFloatingPanel,
+              let keyCode = notification.userInfo?["keyCode"] as? UInt16,
+              let direction = HistoryFloatingNavigationDirection(keyCode: keyCode) else { return }
+        moveFocus(direction, extendingSelection: notification.userInfo?["extendsSelection"] as? Bool == true)
+      }
+  }
+
+  private var content: some View {
+    Group {
+      switch manager.presentationMode {
+      case .compact:
+        compactContent
+      case .expanded:
+        expandedContent
+      }
+    }
+  }
+
+  private var panelShape: RoundedRectangle {
+    RoundedRectangle(
+      cornerRadius: HistoryFloatingLayout.baseCornerRadius(for: manager.presentationMode),
+      style: .continuous
+    )
+  }
+
+  @ViewBuilder
+  private var panelBorder: some View {
+    if backgroundStyle == .hud {
+      // SnapzyGlassWindowBackdrop already owns onboarding's 0.5pt border.
+      EmptyView()
+    } else {
+      panelShape
+        .strokeBorder(
+          LinearGradient(
+            colors: colorScheme == .dark
+              ? [
+                Color.white.opacity(0.20),
+                Color.white.opacity(0.05),
+              ]
+              : [
+                Color.white.opacity(0.85),
+                Color.white.opacity(0.42),
+              ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+          ),
+          lineWidth: 1
+        )
+    }
+  }
+
+  // MARK: - Compact
+
+  /// Раскладка эталона: ряд фильтров на 14 pt от верха поверх ленты, лента – на 34 pt,
+  /// справа только «…» и закрытие (Pin и Open History доступны по ⌘P и из меню).
+  private var compactContent: some View {
+    ZStack(alignment: .top) {
+      if compactRecords.isEmpty {
+        compactEmptyState
+          .padding(.top, HistoryFloatingLayout.compactTilesTopInset)
+      } else {
+        compactScrollContent
+          .padding(.top, HistoryFloatingLayout.compactTilesTopInset)
+      }
+
+      compactHeader
+        .padding(.top, HistoryFloatingLayout.compactHeaderTopInset)
+    }
+  }
+
+  private var compactHeader: some View {
+    ZStack {
+      compactFilterBar
+        .frame(maxWidth: .infinity)
+
+      HStack(spacing: 8) {
+        Spacer()
+
+        overflowMenuButton
+
+        controlButton(
+          systemName: "xmark",
+          help: L10n.Common.close,
+          action: manager.hide
+        )
+      }
+      .padding(.trailing, HistoryFloatingLayout.compactHeaderTrailingInset)
+    }
+  }
+
+  private var compactFilterBar: some View {
+    HStack(spacing: 10) {
+      ForEach(Array(captureTypeFilters.enumerated()), id: \.offset) { _, filter in
+        selectionPill(
+          title: filter.title,
+          isSelected: !isVideoProjectsFilterSelected && filter.type == effectiveCompactFilter,
+          count: nil,
+          action: {
+            isVideoProjectsFilterSelected = false
+            selectCompactFilter(filter.type)
+          }
+        )
+      }
+      selectionPill(
+        title: L10n.PreferencesHistory.filterVideoProjects,
+        isSelected: isVideoProjectsFilterSelected,
+        count: nil,
+        action: { isVideoProjectsFilterSelected = true }
+      )
+    }
+  }
+
+  private var compactScrollContent: some View {
+    HistoryCompactCarouselView(
+      records: compactRecords,
+      selectedId: selectedId,
+      selectionRevealTrigger: compactSelectionRevealTrigger,
+      scrollOffset: $compactScrollOffset,
+      onSelect: { record in
+        selectRecord(record)
+      }
+    )
+  }
+
+  private var compactEmptyState: some View {
+    VStack(spacing: 10) {
+      Image(systemName: compactEmptyIconName)
+        .font(.system(size: 28, weight: .medium))
+        .foregroundColor(.secondary.opacity(0.68))
+
+      Text(HistoryChrome.emptyTitle(historyEnabled: historyEnabled))
+        .font(.system(size: 15, weight: .semibold))
+        .foregroundColor(.secondary)
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+  }
+
+  // MARK: - Expanded
+
+  private var expandedContent: some View {
+    ZStack(alignment: .bottom) {
+      VStack(spacing: 18) {
+        expandedHeader
+
+        if expandedRecords.isEmpty {
+          expandedEmptyState
+        } else if isExpandedGridReady {
+          expandedGrid
+        } else {
+          expandedGridPlaceholder
+        }
+      }
+
+      if !expandedSelectedRecords.isEmpty {
+        expandedSelectionBar
+      }
+    }
+    .padding(.horizontal, 20)
+    .padding(.top, 18)
+    .padding(.bottom, 20)
+  }
+
+  private var expandedHeader: some View {
+    HStack(alignment: .center, spacing: 12) {
+      expandedTypeFilters
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .layoutPriority(1)
+
+      expandedSearchBar
+
+      expandedTrailingControls
+        .fixedSize(horizontal: true, vertical: false)
+    }
+  }
+
+  private var expandedTypeFilters: some View {
+    return HStack(spacing: 8) {
+      ForEach(Array(captureTypeFilters.enumerated()), id: \.offset) { _, filter in
+        selectionPill(
+          title: filter.title,
+          isSelected: manager.expandedFilter == filter.type,
+          count: nil,
+          horizontalPadding: 12,
+          verticalPadding: 8,
+          fontSize: 11,
+          minWidth: expandedTypeFilterMinWidth(for: filter.type),
+          action: {
+            withAnimation(.spring(response: 0.24, dampingFraction: 0.9)) {
+              manager.expandedFilter = filter.type
+            }
+          }
+        )
+      }
+    }
+  }
+
+  private var expandedSearchBar: some View {
+    HStack(spacing: 8) {
+      Image(systemName: "magnifyingglass")
+        .font(.system(size: 12, weight: .semibold))
+        .foregroundColor(.secondary.opacity(0.9))
+
+      TextField(L10n.PreferencesHistory.floatingSearchPlaceholder, text: $manager.searchText)
+        .textFieldStyle(.plain)
+        .font(.system(size: 12, weight: .medium))
+
+      if !manager.searchText.isEmpty {
+        Button(action: { manager.searchText = "" }) {
+          Image(systemName: "xmark.circle.fill")
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundColor(.secondary.opacity(0.8))
+        }
+        .buttonStyle(.plain)
+      }
+    }
+    .padding(.horizontal, 14)
+    .padding(.vertical, 9)
+    // Header row budget: type filters + search + time filters + 4 controls must fit the
+    // expanded panel's content width, so the search field gives up room for "Clear History".
+    .frame(width: 198)
+    .liquidGlassSurface(
+      shape: Capsule(style: .continuous),
+      substrate: 0.18,
+      tint: 0.06,
+      // The native branch draws its own refractive edge and ignores `highlight`; the composite
+      // path resolves the specular hairline. Reading the capability statically here would leave a
+      // stale `.none` behind after a live toggle.
+      highlight: .specular
+    )
+    .shadow(color: chromeSurfaceShadow, radius: 7, x: 0, y: 3)
+  }
+
+  private var expandedTimeFilters: some View {
+    HStack(spacing: 8) {
+      ForEach(HistoryFloatingTimeFilter.allCases) { filter in
+        selectionPill(
+          title: filter.title,
+          isSelected: manager.expandedTimeFilter == filter,
+          count: nil,
+          horizontalPadding: 12,
+          verticalPadding: 8,
+          fontSize: 11,
+          minWidth: expandedTimeFilterMinWidth(for: filter),
+          action: {
+            withAnimation(.spring(response: 0.24, dampingFraction: 0.9)) {
+              manager.expandedTimeFilter = filter
+            }
+          }
+        )
+      }
+    }
+  }
+
+  private var expandedTrailingControls: some View {
+    HStack(spacing: 8) {
+      expandedTimeFilters
+      expandedControls
+    }
+  }
+
+  private var expandedControls: some View {
+    HStack(spacing: 6) {
+      clearHistoryButton(size: 34)
+
+      if manager.isEnabled {
+        controlButton(
+          systemName: "arrow.down.right.and.arrow.up.left",
+          help: L10n.PreferencesHistory.collapsePanel,
+          size: 34,
+          action: manager.collapse
+        )
+      }
+
+      controlButton(
+        systemName: manager.isPinned ? "pin.fill" : "pin",
+        help: manager.isPinned ? L10n.PreferencesHistory.unpinPanel : L10n.PreferencesHistory.pinPanel,
+        size: 34,
+        isActive: manager.isPinned,
+        action: manager.togglePin
+      )
+
+      controlButton(
+        systemName: "xmark",
+        help: L10n.Common.close,
+        size: 34,
+        action: manager.hide
+      )
+    }
+  }
+
+  private var expandedSelectionBar: some View {
+    HStack(spacing: 10) {
+      Label(
+        L10n.PreferencesHistory.selectedCaptures(expandedSelectedRecords.count),
+        systemImage: "checkmark.circle.fill"
+      )
+      .font(.system(size: 11, weight: .semibold))
+      .foregroundColor(.primary.opacity(0.84))
+
+      if expandedSelectedRecords.count < expandedRecords.count {
+        selectionControlButton(
+          title: L10n.PreferencesHistory.selectAll,
+          systemName: "checkmark.circle",
+          action: selectAllExpandedRecords
+        )
+      }
+
+      selectionControlButton(
+        title: L10n.PreferencesHistory.clearSelection,
+        systemName: "xmark.circle",
+        action: clearExpandedSelection
+      )
+
+      selectionControlButton(
+        title: L10n.Common.deleteAction,
+        systemName: "trash",
+        isDestructive: true,
+        action: deleteSelectedRecords
+      )
+    }
+    .padding(.horizontal, 14)
+    .padding(.vertical, 9)
+    .liquidGlassSurface(
+      shape: Capsule(style: .continuous),
+      substrate: LiquidGlassTokens.baseDarkness,
+      tint: 0.06,
+      // Native ignores `highlight`; resolving it statically made the composite path lose its
+      // hairline after a live toggle-off.
+      highlight: .specular
+    )
+    .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.32 : 0.14), radius: 18, x: 0, y: 8)
+    .fixedSize(horizontal: true, vertical: false)
+    .frame(maxWidth: .infinity, alignment: .center)
+    .padding(.bottom, 4)
+    .transition(.scale(scale: 0.96, anchor: .bottom))
+  }
+
+  private var expandedGrid: some View {
+    ScrollViewReader { proxy in
+      ScrollView(.vertical, showsIndicators: false) {
+        LazyVGrid(columns: expandedColumns, spacing: 12) {
+          ForEach(expandedRecords) { record in
+            HistoryExpandedCaptureCardView(
+              record: record,
+              isSelected: expandedSelectedIds.contains(record.id),
+              isFocused: expandedFocusedId == record.id,
+              emphasisMode: .focus,
+              backgroundStyle: backgroundStyle,
+              onTap: {
+                selectExpandedRecord(record)
+              },
+              reservedScrollAxis: expandedRecords.count > expandedColumns.count ? .vertical : nil
+            )
+            .equatable()
+            .id(record.id)
+            .zIndex(expandedFocusedId == record.id ? 1 : 0)
+            .contextMenu {
+              HistoryContextMenu(record: record)
+            }
+          }
+        }
+        .padding(.horizontal, 6)
+        .padding(.top, 4)
+        .padding(.bottom, 88)
+
+        HistoryScrollViewReader(controller: scrollController)
+          .frame(height: 0)
+      }
+      .onChange(of: expandedFocusedId) { id in
+        guard let id else { return }
+        withAnimation(.easeInOut(duration: 0.18)) {
+          proxy.scrollTo(id)
+        }
+      }
+    }
+    .overlay(
+      HistoryFloatingScrollbar(controller: scrollController, scale: resolvedPanelScale)
+        .padding(.trailing, 2),
+      alignment: .trailing
+    )
+  }
+
+  private var expandedGridPlaceholder: some View {
+    ScrollView(.vertical, showsIndicators: false) {
+      LazyVGrid(columns: expandedColumns, spacing: 12) {
+        ForEach(0..<8, id: \.self) { _ in
+          VStack(spacing: 8) {
+            Radius.rect(Radius.tile)
+              .fill(placeholderFill)
+              .aspectRatio(16 / 10, contentMode: .fit)
+
+            VStack(alignment: .leading, spacing: 7) {
+              Radius.rect(Radius.ornament)
+                .fill(placeholderFill)
+                .frame(height: 12)
+
+              HStack(spacing: 8) {
+                Radius.rect(Radius.ornament)
+                  .fill(placeholderFill)
+                  .frame(width: 96, height: 10)
+              }
+            }
+          }
+          .padding(10)
+          .background(placeholderCardFill, in: Radius.rect(Radius.card))
+          .overlay(
+            Radius.rect(Radius.card)
+              .stroke(placeholderStroke, lineWidth: 1)
+          )
+          .redacted(reason: .placeholder)
+        }
+      }
+      .padding(.horizontal, 6)
+      .padding(.top, 4)
+      .padding(.bottom, 14)
+    }
+  }
+
+  private var expandedColumns: [GridItem] {
+    Array(
+      repeating: GridItem(.flexible(minimum: 0, maximum: .infinity), spacing: 12, alignment: .top),
+      count: 4
+    )
+  }
+
+  private var expandedEmptyState: some View {
+    HistoryEmptyStateView(
+      filter: manager.expandedFilter,
+      hasSearch: !manager.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    )
+    .padding(.horizontal, 160)
+    .padding(.bottom, 6)
+  }
+
+  // MARK: - Styling
+
+  private var captureTypeFilters: [(title: String, type: CaptureHistoryType?)] {
+    [
+      (L10n.PreferencesHistory.defaultFilterAll, nil),
+      (L10n.PreferencesHistory.defaultFilterScreenshots, .screenshot),
+      (L10n.PreferencesHistory.defaultFilterVideos, .video),
+      (L10n.PreferencesHistory.defaultFilterGifs, .gif),
+    ]
+  }
+
+  private var effectiveCompactFilter: CaptureHistoryType? {
+    usesExplicitCompactFilterSelection ? selectedCompactFilter : manager.defaultFilter
+  }
+
+  private var chromeSurfaceShadow: Color {
+    Color.black.opacity(colorScheme == .dark ? 0.18 : 0.07)
+  }
+
+  private var pillCountBackground: Color {
+    colorScheme == .dark ? Color.white.opacity(0.12) : Color.white.opacity(0.84)
+  }
+
+  private var placeholderFill: Color {
+    colorScheme == .dark ? Color.white.opacity(0.08) : Color.black.opacity(0.06)
+  }
+
+  private var placeholderCardFill: Color {
+    colorScheme == .dark ? Color.white.opacity(0.05) : Color.white.opacity(0.64)
+  }
+
+  private var placeholderStroke: Color {
+    colorScheme == .dark ? Color.white.opacity(0.06) : Color.black.opacity(0.05)
+  }
+
+  private var compactEmptyIconName: String {
+    switch effectiveCompactFilter {
+    case .screenshot: return CaptureHistoryType.screenshot.systemIconName
+    case .video: return CaptureHistoryType.video.systemIconName
+    case .gif: return CaptureHistoryType.gif.systemIconName
+    case nil: return "clock.arrow.circlepath"
+    }
+  }
+
+  // MARK: - Helpers
+
+  private func selectionPill(
+    title: String,
+    isSelected: Bool,
+    count: Int?,
+    horizontalPadding: CGFloat = 12,
+    verticalPadding: CGFloat = 7,
+    fontSize: CGFloat = 12,
+    minWidth: CGFloat? = nil,
+    action: @escaping () -> Void
+  ) -> some View {
+    Button(action: action) {
+      HStack(spacing: 8) {
+        Text(title)
+          .font(.system(size: fontSize, weight: .semibold))
+          .lineLimit(1)
+          .fixedSize(horizontal: true, vertical: false)
+
+        if let count {
+          Text("\(count)")
+            .font(.system(size: max(fontSize - 2, 9), weight: .bold))
+            .padding(.horizontal, 5)
+            .padding(.vertical, 2)
+            .background(pillCountBackground.opacity(isSelected ? 0.18 : 1), in: Capsule())
+        }
+      }
+      .foregroundColor(isSelected ? .white : LiquidGlassTokens.inkBody)
+      .padding(.horizontal, horizontalPadding)
+      .padding(.vertical, verticalPadding)
+      .frame(minWidth: minWidth)
+      // Выбранный фильтр залит красным, как All у эталона: заливка лежит над стеклом
+      .background(
+        Capsule(style: .continuous)
+          .fill(HistoryChrome.selectionAccent)
+          .opacity(isSelected ? 1 : 0)
+      )
+      .liquidGlassControl(isActive: false, in: Capsule(style: .continuous), showsRestingSurface: true)
+    }
+    .buttonStyle(.plain)
+  }
+
+  private func controlButton(
+    systemName: String,
+    help: String,
+    size: CGFloat = 30,
+    isActive: Bool = false,
+    action: @escaping () -> Void
+  ) -> some View {
+    Button(action: action) {
+      Image(systemName: systemName)
+        .font(.system(size: size <= 34 ? 10.5 : 11, weight: .semibold))
+        .frame(width: size, height: size)
+        .foregroundColor(isActive ? LiquidGlassTokens.inkOnAccent : LiquidGlassTokens.inkBody)
+        .liquidGlassControl(isActive: isActive, in: Circle(), showsRestingSurface: true)
+    }
+    .buttonStyle(.plain)
+    .help(help)
+  }
+
+  /// One-click "Clear History" — hidden while there is nothing to clear so the header
+  /// never offers a no-op destructive action.
+  @ViewBuilder
+  private func clearHistoryButton(size: CGFloat) -> some View {
+    if !store.records.isEmpty {
+      controlButton(
+        systemName: "trash",
+        help: L10n.PreferencesHistory.clearHistoryButton,
+        size: size,
+        action: clearAllHistory
+      )
+      .accessibilityLabel(L10n.PreferencesHistory.clearHistoryButton)
+      .transition(.scale(scale: 0.8).combined(with: .opacity))
+    }
+  }
+
+  /// Меню ellipsis эталона: неактивный Keep History, сроки хранения, разделитель, Clear History...
+  private var overflowMenuButton: some View {
+    let current = HistoryRetentionChoice.current(historyEnabled: historyEnabled, retentionDays: historyRetentionDays)
+    return Menu {
+      Button(L10n.PreferencesHistory.keepHistoryMenuTitle) {}
+        .disabled(true)
+      ForEach(HistoryRetentionChoice.allCases, id: \.self) { choice in
+        Button {
+          var enabled = historyEnabled
+          var days = historyRetentionDays
+          choice.apply(historyEnabled: &enabled, retentionDays: &days)
+          historyEnabled = enabled
+          historyRetentionDays = days
+        } label: {
+          if choice == current {
+            Label(choice.title, systemImage: "checkmark")
+          } else {
+            Text(choice.title)
+          }
+        }
+      }
+      Divider()
+      Button(L10n.PreferencesHistory.clearHistoryMenuItem, action: clearAllHistory)
+        .disabled(store.records.isEmpty)
+    } label: {
+      Image(systemName: "ellipsis")
+        .font(.system(size: 10.5, weight: .semibold))
+        .frame(width: 30, height: 30)
+        .foregroundColor(LiquidGlassTokens.inkBody)
+        .liquidGlassControl(isActive: false, in: Circle(), showsRestingSurface: true)
+    }
+    .menuStyle(.borderlessButton)
+    .menuIndicator(.hidden)
+    .fixedSize()
+    .help(L10n.PreferencesHistory.moreOptions)
+    .accessibilityLabel(L10n.PreferencesHistory.moreOptions)
+  }
+
+  private func clearAllHistory() {
+    HistoryWindowController.shared.clearAllHistory()
+  }
+
+  private func selectionControlButton(
+    title: String,
+    systemName: String,
+    isDestructive: Bool = false,
+    action: @escaping () -> Void
+  ) -> some View {
+    Button(role: isDestructive ? .destructive : nil, action: action) {
+      Label(title, systemImage: systemName)
+        .font(.system(size: 11, weight: .semibold))
+        .lineLimit(1)
+        .fixedSize(horizontal: true, vertical: false)
+    }
+    .buttonStyle(.plain)
+    .foregroundColor(isDestructive ? .red : .primary.opacity(0.82))
+  }
+
+  private func filteredRecords(
+    typeFilter: CaptureHistoryType?,
+    searchText: String,
+    timeFilter: HistoryFloatingTimeFilter,
+    limit: Int? = nil
+  ) -> [CaptureHistoryRecord] {
+    let now = Date()
+    let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+
+    var result = sortedRecords
+
+    if let typeFilter {
+      result = result.filter { $0.captureType == typeFilter }
+    }
+
+    if timeFilter != .all {
+      result = result.filter { timeFilter.includes($0.capturedAt, relativeTo: now) }
+    }
+
+    if !query.isEmpty {
+      result = result.filter { $0.fileName.localizedCaseInsensitiveContains(query) }
+    }
+
+    if let limit {
+      return Array(result.prefix(limit))
+    }
+
+    return result
+  }
+
+  private func selectCompactFilter(_ filter: CaptureHistoryType?) {
+    let nextSelectionId = filteredRecords(
+      typeFilter: filter,
+      searchText: "",
+      timeFilter: .all,
+      limit: manager.maxDisplayedItems
+    ).first?.id
+
+    withAnimation(.spring(response: 0.22, dampingFraction: 0.9)) {
+      usesExplicitCompactFilterSelection = true
+      selectedCompactFilter = filter
+      selectedId = nextSelectionId
+      compactScrollOffset = 0
+    }
+  }
+
+  private func syncSelectionIfNeeded() {
+    guard !activeRecords.isEmpty else {
+      selectedId = nil
+      if manager.presentationMode == .expanded {
+        expandedFocusedId = nil
+      }
+      return
+    }
+
+    if manager.presentationMode == .expanded {
+      expandedFocusedId = HistoryFloatingNavigation.initialFocusedID(
+        in: activeRecordIDs,
+        currentID: expandedFocusedId
+      )
+      return
+    }
+
+    guard let selectedId, activeRecords.contains(where: { $0.id == selectedId }) else {
+      self.selectedId = activeRecords.first?.id
+      if manager.presentationMode == .compact, self.selectedId != nil {
+        compactSelectionRevealTrigger += 1
+      }
+      return
+    }
+  }
+
+  private func selectRecord(_ record: CaptureHistoryRecord) {
+    selectedId = record.id
+    manager.focusPanel()
+  }
+
+  private func selectExpandedRecord(_ record: CaptureHistoryRecord) {
+    let flags = NSEvent.modifierFlags.intersection(.deviceIndependentFlagsMask)
+
+    if flags.contains(.shift) {
+      let rangeSelection = HistoryFloatingNavigation.inclusiveRangeIDs(
+        orderedIDs: expandedRecordIDs,
+        anchorID: expandedLastSelectedId,
+        previousFocusedID: expandedFocusedId,
+        focusedID: record.id,
+        baselineIDs: expandedRangeBaselineIds
+      )
+      expandedSelectedIds = rangeSelection.selection
+      expandedLastSelectedId = rangeSelection.anchor
+    } else if flags.contains(.command) {
+      if expandedSelectedIds.contains(record.id) {
+        expandedSelectedIds.remove(record.id)
+      } else {
+        expandedSelectedIds.insert(record.id)
+      }
+      expandedRangeBaselineIds = expandedSelectedIds
+      expandedLastSelectedId = record.id
+    } else {
+      expandedSelectedIds = [record.id]
+      expandedRangeBaselineIds = expandedSelectedIds
+      expandedLastSelectedId = record.id
+    }
+
+    expandedFocusedId = record.id
+    manager.focusPanel()
+  }
+
+  private func moveFocus(_ direction: HistoryFloatingNavigationDirection, extendingSelection: Bool) {
+    switch manager.presentationMode {
+    case .compact:
+      guard let selectedId,
+            let currentIndex = compactRecords.firstIndex(where: { $0.id == selectedId }),
+            let targetIndex = HistoryFloatingNavigation.compactTargetIndex(
+              from: currentIndex,
+              direction: direction,
+              count: compactRecords.count
+            ),
+            targetIndex != currentIndex else { return }
+      self.selectedId = compactRecords[targetIndex].id
+      compactSelectionRevealTrigger += 1
+    case .expanded:
+      guard let expandedFocusedId else { return }
+      let transition = HistoryFloatingNavigation.expandedFocusTransition(
+        from: expandedFocusedId,
+        direction: direction,
+        orderedIDs: expandedRecordIDs,
+        selectedIDs: expandedSelectedIds,
+        extendingSelection: extendingSelection,
+        anchorID: expandedLastSelectedId,
+        baselineIDs: expandedRangeBaselineIds
+      )
+      guard let nextID = transition.focusedID else { return }
+      guard nextID != expandedFocusedId else { return }
+      self.expandedFocusedId = nextID
+      expandedSelectedIds = transition.selectedIDs
+      expandedLastSelectedId = transition.anchorID
+      expandedRangeBaselineIds = transition.baselineIDs
+    }
+  }
+
+  private func selectAllExpandedRecords() {
+    expandedSelectedIds = Set(expandedRecords.map(\.id))
+    expandedRangeBaselineIds = expandedSelectedIds
+    expandedLastSelectedId = expandedRecords.last?.id
+  }
+
+  private func clearExpandedSelection() {
+    expandedSelectedIds.removeAll()
+    expandedRangeBaselineIds.removeAll()
+    expandedLastSelectedId = nil
+  }
+
+  private func pruneExpandedSelection() {
+    let prunedSelection = HistoryFloatingNavigation.prunedExpandedSelection(
+      orderedIDs: expandedRecordIDs,
+      selectedIDs: expandedSelectedIds,
+      baselineIDs: expandedRangeBaselineIds,
+      anchorID: expandedLastSelectedId,
+      focusedID: expandedFocusedId
+    )
+    expandedSelectedIds = prunedSelection.selection
+    expandedRangeBaselineIds = prunedSelection.baseline
+    expandedLastSelectedId = prunedSelection.anchor
+  }
+
+  private func openFullHistory() {
+    manager.showExpanded(initialFilter: effectiveCompactFilter)
+  }
+
+  private func copySelectedRecord() {
+    if manager.presentationMode == .expanded, !expandedSelectedRecords.isEmpty {
+      HistoryWindowController.shared.copyToClipboard(expandedSelectedRecords)
+      return
+    }
+
+    let focusedID = manager.presentationMode == .expanded ? expandedFocusedId : selectedId
+    guard let focusedID,
+      let record = activeRecords.first(where: { $0.id == focusedID })
+    else { return }
+
+    HistoryWindowController.shared.copyToClipboard([record])
+  }
+
+  /// Return как в эталоне: выбранная запись возвращается в Quick Access, History скрывается.
+  private func openSelectedRecord() {
+    guard let record = focusedRecord else { return }
+    HistoryWindowController.shared.restoreItem(record, hidesHistory: true)
+  }
+
+  private func quickLookSelectedRecord() {
+    guard let record = focusedRecord else { return }
+    HistoryWindowController.shared.toggleQuickLook(record)
+  }
+
+  private var focusedRecord: CaptureHistoryRecord? {
+    let focusedID = manager.presentationMode == .expanded ? expandedFocusedId : selectedId
+    guard let focusedID else { return nil }
+    return activeRecords.first(where: { $0.id == focusedID })
+  }
+
+  private func deleteSelectedRecords() {
+    // В компактном режиме Backspace удаляет выбранную запись с подтверждением, как в эталоне.
+    guard manager.presentationMode == .expanded else {
+      if let record = focusedRecord {
+        HistoryWindowController.shared.deleteRecordsConfirmingIfNeeded([record])
+      }
+      return
+    }
+
+    HistoryWindowController.shared.deleteRecordsConfirmingIfNeeded(expandedSelectedRecords)
+  }
+
+  private func expandedTypeFilterMinWidth(for filter: CaptureHistoryType?) -> CGFloat {
+    switch filter {
+    case .screenshot:
+      return 108
+    case .video:
+      return 78
+    case .gif:
+      return 70
+    case nil:
+      return 62
+    }
+  }
+
+  private func expandedTimeFilterMinWidth(for filter: HistoryFloatingTimeFilter) -> CGFloat {
+    switch filter {
+    case .all:
+      return 84
+    case .last24Hours:
+      return 58
+    case .last7Days, .last30Days:
+      return 54
+    }
+  }
+
+  private func prefetchExpandedThumbnailsIfNeeded() {
+    guard manager.presentationMode == .expanded, !expandedRecords.isEmpty else { return }
+    HistoryThumbnailGenerator.shared.preloadThumbnails(for: Array(expandedRecords.prefix(10)))
+  }
+
+  private func syncExpandedGridPresentation(for mode: HistoryFloatingPresentationMode) {
+    expandedGridWarmupTask?.cancel()
+
+    guard mode == .expanded else {
+      isExpandedGridReady = false
+      return
+    }
+
+    prefetchExpandedThumbnailsIfNeeded()
+
+    guard !expandedRecords.isEmpty else {
+      isExpandedGridReady = true
+      return
+    }
+
+    isExpandedGridReady = false
+    expandedGridWarmupTask = Task {
+      try? await Task.sleep(nanoseconds: 140_000_000)
+      guard !Task.isCancelled else { return }
+      await MainActor.run {
+        isExpandedGridReady = true
+      }
+    }
+  }
+}
